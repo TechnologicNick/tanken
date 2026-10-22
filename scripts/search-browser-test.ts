@@ -73,7 +73,14 @@ try {
           await expect(input).toHaveAttribute("aria-activedescendant", "search-option-1");
           await input.press("Enter");
         }
-        await expect(page.locator("#search-status")).toHaveText("Newest 2");
+        await expect(input).toHaveValue("Newest 2");
+        await expect(page.locator("#search-status")).toBeEmpty();
+        await page.locator("#search-clear").click();
+        await expect(input).toHaveValue("");
+        await expect(input).toBeFocused();
+        await expect(page.locator("#search-clear")).toBeHidden();
+        await expect(options).toHaveCount(0);
+        expect(await input.evaluate(el => getComputedStyle(el).outlineColor)).toBe('rgb(18, 62, 52)');
         await expect(page.locator("#map")).toBeVisible();
         await expect.poll(() => new URL(page.url()).searchParams.get("bounds")).toContain("5.");
         if (mobile) await page.locator("#mobile-toggle").tap();
@@ -83,7 +90,7 @@ try {
         await input.fill("Europa");
         await page.waitForTimeout(400);
         expect(searches).toEqual(["Older", "Newest"]);
-        await page.locator("#search-form button").first().click();
+        await input.press("Enter");
         await expect(options).toHaveCount(5);
         expect(searches).toEqual(["Older", "Newest", "Europa"]);
         await context.close();

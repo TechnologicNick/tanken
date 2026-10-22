@@ -5,6 +5,7 @@ export function locationSearch(select: (location: Location) => void) {
     input = document.getElementById("search") as HTMLInputElement,
     country = form.elements.namedItem("country") as HTMLSelectElement,
     results = document.getElementById("search-results")!,
+    clear = document.getElementById("search-clear")!,
     message = document.getElementById("search-status")!;
   let pending: AbortController | undefined,
     timer: ReturnType<typeof setTimeout> | undefined,
@@ -20,6 +21,12 @@ export function locationSearch(select: (location: Location) => void) {
   input.setAttribute("aria-expanded", "false");
   results.setAttribute("role", "listbox");
   results.replaceChildren();
+  clear.hidden = !input.value;
+  clear.addEventListener("click", () => {
+    input.value = "";
+    changed();
+    input.focus({ preventScroll: true });
+  });
 
   function cancel() {
     clearTimeout(timer);
@@ -29,7 +36,7 @@ export function locationSearch(select: (location: Location) => void) {
   }
   function close() {
     cancel();
-    if (message.textContent === "Locaties zoeken…") message.textContent = "";
+    message.textContent = "";
     results.replaceChildren();
     active = -1;
     input.setAttribute("aria-expanded", "false");
@@ -41,7 +48,7 @@ export function locationSearch(select: (location: Location) => void) {
     input.removeAttribute("aria-activedescendant");
     input.setAttribute("aria-expanded", String(locations.length > 0));
     message.textContent = locations.length
-      ? `${locations.length} locaties gevonden. · ${country.value === "eu" ? "© OpenStreetMap-bijdragers" : "PDOK"}`
+      ? (country.value === "eu" ? "© OpenStreetMap-bijdragers" : "")
       : "Geen locatie gevonden. Probeer een andere plaats of postcode.";
     for (const [index, location] of locations.entries()) {
       const item = document.createElement("li"),
@@ -56,7 +63,7 @@ export function locationSearch(select: (location: Location) => void) {
       button.onclick = () => {
         close();
         input.value = location.label;
-        message.textContent = location.label;
+        clear.hidden = false;
         input.blur();
         select(location);
       };
@@ -94,6 +101,7 @@ export function locationSearch(select: (location: Location) => void) {
     }
   }
   function changed() {
+    clear.hidden = !input.value;
     close();
     message.textContent = "";
     // Public Nominatim forbids autocomplete; European searches remain explicit.

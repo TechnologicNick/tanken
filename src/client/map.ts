@@ -7,6 +7,7 @@ declare const L: typeof Leaflet;
 type View = ReturnType<typeof stationPayload>;
 import { stationPins } from "./pins.ts";
 import { stationPanel } from "./station-panel.ts";
+import { stationList } from "./station-list.ts";
 const $ = <T extends HTMLElement>(id: string) =>
   document.getElementById(id) as T;
 const data = JSON.parse($("map-data").textContent || "{}");
@@ -28,11 +29,21 @@ const validBounds = (value: string | null) => {
 };
 // A cached home document can be reused for another previously viewed area.
 const initialBounds = validBounds(urlParams.get("bounds")) || data.bounds;
-const fuelSelect = $<HTMLSelectElement>("fuel"),
+const fuelSelect = $("fuel"),
   sortSelect = $<HTMLSelectElement>("sort");
-document.body.classList.add("show-map");
-if ([...fuelSelect.options].some((o) => o.value === urlParams.get("fuel")))
-  fuelSelect.value = urlParams.get("fuel")!;
+const fuels = [...fuelSelect.querySelectorAll<HTMLInputElement>('input[type="radio"]')];
+const fuel = () => fuels.find(input => input.checked)!.value;
+function setFuel(value: string | null) {
+  const input = fuels.find(input => input.value === value);
+  if (input) input.checked = true;
+  $("search-form").querySelector<HTMLInputElement>('input[name="fuel"]')!.value = fuel();
+}
+setFuel(urlParams.get("fuel"));
+document.body.classList.add("map-ready");
+const controls = document.querySelector<HTMLElement>(".map-controls")!;
+new ResizeObserver(() => {
+  document.documentElement.style.setProperty("--map-controls-height", `${controls.offsetHeight}px`);
+}).observe(controls);
 if ([...sortSelect.options].some((o) => o.value === urlParams.get("sort")))
   sortSelect.value = urlParams.get("sort")!;
 const map = L.map("map", {
@@ -54,7 +65,7 @@ L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
 const pins = stationPins(
   map,
   data.pinRetina || data.pin,
-  (station) => panel.select(station, fuelSelect.value),
+  (station) => panel.select(station, fuel()),
 );
 const render = (items: View["markers"]) => pins.update(items);
 render(data.markers);
@@ -122,9 +133,6 @@ function apply(v: View, request: { id: number; query: string }) {
       (v.stale ? "De laatste waarnemingen zijn ouder dan 90 minuten. " : "") +
         (!navigator.onLine ? " Offline · eerder opgehaalde prijzen." : ""),
     );
-    $("updated").textContent = v.retrievedAt
-      ? `Oudste waarneming: ${new Date(v.retrievedAt).toLocaleString("nl-NL")}`
-      : "Geen waarnemingen.";
     const params = new URLSearchParams(request.query);
     params.delete("brush");
     $("pagination").replaceChildren();
@@ -198,7 +206,7 @@ function refresh() {
         .map((n) => n.toFixed(5))
         .join(",");
     })(),
-    fuel: fuelSelect.value,
+    fuel: fuel(),
     sort: sortSelect.value,
   });
   if (brush?.value) params.set("brush", brush.value);
@@ -310,6 +318,7 @@ $("filters").addEventListener("submit", (e) => {
   refresh();
 });
 fuelSelect.onchange = sortSelect.onchange = () => {
+  setFuel(fuel());
   clearTimeout(debounce);
   page = 1;
   refresh();
@@ -333,16 +342,11 @@ $("locate").onclick = () => {
     { timeout: 10000, maximumAge: 60000 },
   );
 };
-const toggle = $<HTMLButtonElement>("mobile-toggle");
-toggle.hidden = false;
+const list = stationList(data.drawer);
 function toggleMap(show: boolean) {
-  document.body.classList.toggle("show-map", show);
-  toggle.textContent = show ? "Bekijk tankstations" : "Bekijk kaart";
-  if (show) map.invalidateSize();
+  void list.show(!show);
 }
-toggle.onclick = () => toggleMap(!document.body.classList.contains("show-map"));
-toggleMap(true);
-const panel = stationPanel(data.drawer, toggleMap, pins.highlight);
+const panel = stationPanel(data.drawer, toggleMap, pins.highlight, list.parent);
 function brushChanged(finished: boolean) {
   $("list-area").hidden = !!brush?.active;
   const hint = document.querySelector<HTMLElement>(".list-area-hint")!;
@@ -401,8 +405,7 @@ if (!location.search) {
         [b[0], b[1]],
         [b[2], b[3]],
       ]);
-      if ([...fuelSelect.options].some((o) => o.value === saved.fuel))
-        fuelSelect.value = saved.fuel;
+      setFuel(saved.fuel);
     }
   } catch {}
 }

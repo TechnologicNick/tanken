@@ -5,6 +5,7 @@ export function stationPanel(
   drawerAsset: string,
   showMap: (show: boolean) => void,
   highlight: (station: MapStation | null) => void,
+  parentDrawer: () => Promise<DrawerController | undefined>,
 ) {
   const list = document.getElementById("stations")!;
   const root = document.getElementById("station-panel")!;
@@ -15,6 +16,7 @@ export function stationPanel(
   const closeButton = document.getElementById("station-card-close")!;
   const mobile = matchMedia("(max-width: 600px)");
   let drawer: DrawerController | undefined;
+  let parent: DrawerController | undefined;
   let library: Promise<typeof import("./drawer.ts")> | undefined;
   let selected: MapStation | null = null,
     hovered: MapStation | null = null;
@@ -45,7 +47,7 @@ export function stationPanel(
     }
   }
   function finish() {
-    if (open && mobile.matches) showMap(returnToMap);
+    if (open && mobile.matches && returnToMap) showMap(true);
     open = false;
     ++revision;
     pending?.abort();
@@ -77,10 +79,18 @@ export function stationPanel(
         return;
       }
       if (!open || !mobile.matches) return;
+      const nextParent = returnToMap ? undefined : await parentDrawer();
+      if (!open || !mobile.matches) return;
+      if (drawer && parent !== nextParent) {
+        drawer.destroy();
+        drawer = undefined;
+      }
+      parent = nextParent;
       drawer ||= createDrawer(root, {
         modal: true,
         swipeDirection: "down",
-        finalFocus: "#mobile-toggle",
+        parent,
+        finalFocus: parent ? undefined : "#mobile-toggle",
         onOpenChange(value) {
           if (!value) finish();
         },
@@ -104,7 +114,7 @@ export function stationPanel(
     title.textContent = selected.title;
     body.textContent = "Stationinformatie laden…";
     body.setAttribute("aria-busy", "true");
-    showMap(true);
+    if (fromMap) showMap(true);
     document.body.classList.add("station-card-open");
     sync();
     highlight(selected);

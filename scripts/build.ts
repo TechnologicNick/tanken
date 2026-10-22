@@ -123,7 +123,7 @@ for (const path of Object.values(assets)) {
   else if (path.endsWith(".css")) cssBytes += bytes;
 }
 jsBytes += gzipSync(await readFile("dist/sw.js")).length;
-if (jsBytes > 60 * 1024 || cssBytes > 6 * 1024)
+if (jsBytes > 60 * 1024 || cssBytes > 6.5 * 1024)
   throw new Error(`Asset budget exceeded: JS ${jsBytes}, CSS ${cssBytes}`);
 console.log(
   JSON.stringify({

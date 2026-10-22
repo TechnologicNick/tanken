@@ -131,7 +131,7 @@ try {
       // Windows' WebKit port can omit overscroll CSS; iOS 17 supports it.
       if (await page.evaluate(() => CSS.supports("overscroll-behavior", "contain")))
         expect(await body.evaluate(el => getComputedStyle(el).getPropertyValue("overscroll-behavior"))).toBe("contain");
-      await swipeDrawer(".drawer-handle");
+      await swipeDrawer("#station-card .drawer-handle");
       await expect(popup).toBeHidden();
       await expect(page.locator("#stations .station").first()).toBeVisible();
       await openDrawer();
@@ -160,6 +160,30 @@ try {
       await expect(popup).toBeHidden();
       await expect(page.locator("#stations .station").first()).toBeVisible();
       expect(errors).toEqual([]);
+      const list = page.locator("#list-drawer");
+      const settledList = () => expect.poll(() => list.evaluate(el => el.getAnimations().length)).toBe(0);
+      await settledList();
+      const visibleListHeight = () => list.evaluate(el => innerHeight - el.getBoundingClientRect().top);
+      await expect.poll(visibleListHeight).toBeCloseTo(page.viewportSize()!.height * .455, 0);
+      await swipeDrawer("#list-drawer .drawer-handle", -page.viewportSize()!.height * .5);
+      await settledList();
+      await expect.poll(visibleListHeight).toBeCloseTo(page.viewportSize()!.height, 0);
+      await expect(page.locator("#list-viewport")).toHaveAttribute("data-expanded", "");
+      expect(await page.evaluate(() => document.elementFromPoint(40, 40)?.closest('[data-slot="drawer-popup"]')?.id)).toBe("list-drawer");
+      await page.locator("#stations .station").first().tap();
+      await expect(body.locator("article")).toBeVisible();
+      await page.locator("#station-card-close").tap();
+      await expect(popup).toBeHidden();
+      await settledList();
+      await expect.poll(visibleListHeight).toBeCloseTo(page.viewportSize()!.height, 0);
+      await swipeDrawer("#list-drawer .drawer-handle", page.viewportSize()!.height * .4);
+      await settledList();
+      await expect.poll(visibleListHeight).toBeCloseTo(page.viewportSize()!.height * .455, 0);
+      await swipeDrawer("#list-drawer .drawer-handle");
+      await expect(page.locator("#list-drawer")).toBeHidden();
+      await expect(page.locator("#map")).toBeVisible();
+      await expect(page.locator("#search")).toBeVisible();
+      await expect(page.locator("#mobile-toggle")).toBeVisible();
       await context.close();
       console.log(`${name}: map gestures, drawer handle dismissal, content scrolling and swipe dismissal at the top passed`);
     } finally { await browser.close(); }

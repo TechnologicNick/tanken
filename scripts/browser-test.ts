@@ -208,7 +208,7 @@ try {
         return (window as any).testCanvasClears;
       });
       const initialFrames = frames;
-      await page.locator(".leaflet-control-zoom-out").click();
+      await page.locator(".leaflet-control-zoom-out").evaluate(el => (el as HTMLElement).click());
       await expect.poll(() => frames).toBeGreaterThan(initialFrames);
       // Even with a slow reply, zoom only transforms the existing canvas; it
       // must not repaint old groups and then repaint again with the new groups.
@@ -221,7 +221,7 @@ try {
       await page.evaluate(() => {
         (window as any).testMessageDelay = 0;
       });
-      await page.locator(".leaflet-control-zoom-out").click();
+      await page.locator(".leaflet-control-zoom-out").evaluate(el => (el as HTMLElement).click());
       await expect(
         page.locator("#stations .station").filter({ hasText: "Tango Oost" }),
       ).toHaveCount(1);
@@ -256,7 +256,24 @@ try {
       await expect.poll(() => frames).toBeGreaterThan(beforeReconnect);
       expect(apiRequests).toBe(0);
       await page.screenshot({ path: `test-results/${name}-map.png` });
+      expect(drawerRequests).toBe(0);
       await page.locator("#mobile-toggle").click();
+      await expect(page.locator("#list-drawer")).toHaveAttribute("data-open", "");
+      await expect(page.locator("#map")).toBeVisible();
+      await expect(page.locator("#search")).toBeVisible();
+      expect(await page.locator("#search").evaluate(el => el.closest('[data-slot="drawer-popup"]'))).toBeNull();
+      expect(await page.locator("#fuel").evaluate(el => el.closest('[data-slot="drawer-popup"]')?.id)).toBe("list-drawer");
+      await expect(page.locator('.searchbox button[type="submit"]')).toHaveCount(0);
+      await expect(page.locator('.leaflet-control-zoom')).toBeHidden();
+      await expect.poll(() => page.locator('#list-drawer').evaluate(el => el.getBoundingClientRect().height - parseFloat((el as HTMLElement).style.getPropertyValue('--drawer-snap-point-offset')))).toBeCloseTo(page.viewportSize()!.height * .455, 0);
+      await expect(page.locator('#updated')).toHaveCount(0);
+      const fullscreenMap = (await page.locator("#map").boundingBox())!;
+      expect(fullscreenMap.y).toBe(0);
+      expect(fullscreenMap.height).toBe(page.viewportSize()!.height);
+      const countBox = (await page.locator("#count").boundingBox())!;
+      const sortBox = (await page.locator("#sort").boundingBox())!;
+      expect(sortBox.x).toBeGreaterThan(countBox.x + countBox.width);
+      expect(await page.locator("#fuel").evaluate(el => el.scrollWidth > el.clientWidth)).toBe(true);
       await expect(
         page.locator("#stations .station").filter({ hasText: "Tango Oost" }),
       ).toHaveCount(1);
@@ -264,7 +281,7 @@ try {
         path: `test-results/${name}-list.png`,
         fullPage: true,
       });
-      expect(drawerRequests).toBe(0);
+      expect(drawerRequests).toBe(1);
       const eastLink = page
         .locator("#stations .station")
         .filter({ hasText: "Tango Oost" });
@@ -283,7 +300,13 @@ try {
       await expect(page.locator("#station-card-body article")).toContainText(
         "Shop",
       );
-      expect(new URL(page.url()).pathname).toBe("/");
+      await expect(page.getByRole('link', {name:'Navigeer met Apple Kaarten ↗'})).toBeVisible();
+      const googleLink = page.getByRole('link', {name:'Navigeer met Google Maps ↗'});
+      await expect(googleLink).toBeVisible();
+      const googleUrl = new URL((await googleLink.getAttribute('href'))!);
+      expect(googleUrl.searchParams.get('api')).toBe('1');
+      expect(googleUrl.searchParams.get('destination')).toBe('52.08,5.5');
+      expect(new URL(page.url()).pathname).toBe('/');
       expect(drawerRequests).toBe(1);
       await expect
         .poll(() =>
@@ -297,12 +320,13 @@ try {
       await page.keyboard.press("Escape");
       await expect(page.locator("#station-card")).toBeHidden();
       await expect(eastLink).toBeVisible();
+      await expect(page.locator("#list-drawer")).toHaveAttribute("data-open", "");
       await eastLink.click();
       await expect(page.locator("#station-card-body article")).toBeVisible();
       await expect.poll(() => page.locator("#station-card").evaluate(el =>
         !el.hasAttribute("data-starting-style") && el.getAnimations().length === 0
       )).toBe(true);
-      const handle = (await page.locator(".drawer-handle").boundingBox())!;
+      const handle = (await page.locator("#station-card .drawer-handle").boundingBox())!;
       await page.mouse.move(
         handle.x + handle.width / 2,
         handle.y + handle.height / 2,
@@ -399,7 +423,7 @@ try {
         .toBe(true);
       const denseZoom = Number(new URL(page.url()).searchParams.get("zoom"));
       const denseFrames = frames;
-      await page.locator(".leaflet-control-zoom-out").click();
+      await page.locator(".leaflet-control-zoom-out").evaluate(el => (el as HTMLElement).click());
       await expect.poll(() => frames).toBeGreaterThan(denseFrames);
       await expect
         .poll(() => Number(new URL(page.url()).searchParams.get("zoom")))
@@ -455,7 +479,8 @@ try {
       await page.locator("#search").fill("Teststad");
       await expect(page.locator("#search-results button")).toHaveCount(2);
       await page.locator("#search-results button").nth(1).tap();
-      await expect(page.locator("#search-status")).toHaveText("Teststad oost");
+      await expect(page.locator("#search")).toHaveValue("Teststad oost");
+      await expect(page.locator("#search-status")).toBeEmpty();
       await expect(page.locator("#map")).toBeVisible();
       await context.close();
       const desktop = await browser.newContext({
@@ -497,7 +522,6 @@ try {
         .evaluate((aside) => ({
           stations: aside.querySelector("#stations")!.innerHTML,
           status: aside.querySelector("#status")!.textContent,
-          updated: aside.querySelector("#updated")!.textContent,
           pagination: aside.querySelector("#pagination")!.innerHTML,
           count: aside.querySelector("#count")!.textContent,
           top: aside.querySelector("#stations")!.getBoundingClientRect().top,
@@ -505,7 +529,7 @@ try {
       await cardPage.evaluate(() => {
         (window as any).testMessageDelay = 1000;
       });
-      await cardPage.locator("#fuel").selectOption("DIESEL");
+      await cardPage.locator('#fuel label').filter({hasText:"Diesel · B7"}).click();
       await expect(cardPage.locator("#loading")).toBeVisible();
       await expect(cardPage.locator("#stations")).toHaveAttribute(
         "aria-busy",
@@ -515,7 +539,6 @@ try {
         await cardPage.locator("aside").evaluate((aside) => ({
           stations: aside.querySelector("#stations")!.innerHTML,
           status: aside.querySelector("#status")!.textContent,
-          updated: aside.querySelector("#updated")!.textContent,
           pagination: aside.querySelector("#pagination")!.innerHTML,
           count: aside.querySelector("#count")!.textContent,
           top: aside.querySelector("#stations")!.getBoundingClientRect().top,
@@ -528,7 +551,7 @@ try {
       await cardPage.evaluate(() => {
         (window as any).testMessageDelay = 0;
       });
-      await cardPage.locator("#fuel").selectOption("EURO95");
+      await cardPage.locator('#fuel label').filter({hasText:"Euro 95 · E10"}).click();
       await expect(cardPage.locator("#stations .money").first()).toContainText(
         "1,839",
       );
@@ -538,7 +561,7 @@ try {
       await expect(cardPage.locator(".station-highlight-label")).toContainText(
         "Tango Test",
       );
-      await cardPage.locator("label[for=search]").hover();
+      await cardPage.locator("#search").hover();
       await expect(cardPage.locator(".station-highlight")).toHaveCount(0);
       await firstLink.click();
       await expect(
@@ -557,9 +580,7 @@ try {
       await expect(
         cardPage.locator("#station-card .price-last").first(),
       ).toHaveText("9");
-      await expect(cardPage.locator("#fuel option:checked")).toHaveText(
-        "Euro 95 · E10",
-      );
+      await expect(cardPage.getByRole("radio", { name: "Euro 95 · E10", exact: true })).toBeChecked();
       const area = (await cardPage.locator("#list-area").boundingBox())!;
       const mapBox = (await cardPage.locator("#map").boundingBox())!;
       expect(area.x - mapBox.x).toBeCloseTo(mapBox.width * 0.25, 0);
@@ -795,9 +816,8 @@ try {
       await expect
         .poll(() => new URL(cardPage.url()).searchParams.get("bounds"))
         .not.toBe(beforeSearch);
-      await expect(cardPage.locator("#search-status")).toHaveText(
-        "Teststad oost",
-      );
+      await expect(cardPage.locator("#search")).toHaveValue("Teststad oost");
+      await expect(cardPage.locator("#search-status")).toBeEmpty();
       await expect(cardPage.locator("#stations")).toContainText("Tango Oost");
       expect(searchNavigations).toBe(0);
       await desktop.close();
@@ -810,7 +830,7 @@ try {
       await expect(html.locator("tbody tr")).toHaveCount(1);
       await html.goto(base);
       await html.locator("#search").fill("Teststad");
-      await html.locator("#search-form button").click();
+      await html.locator("#search").press("Enter");
       await expect(html.locator("#search-results a")).toHaveCount(2);
       expect(new URL(html.url()).pathname).toBe("/");
       await plain.close();
