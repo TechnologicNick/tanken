@@ -129,6 +129,13 @@ try {
       };
       await openDrawer();
       // Windows' WebKit port can omit overscroll CSS; iOS 17 supports it.
+      const cardHeight = () => popup.evaluate(el => innerHeight - el.getBoundingClientRect().top);
+      await expect.poll(cardHeight).toBeCloseTo(page.viewportSize()!.height * .455, 0);
+      await swipeDrawer("#station-card .drawer-handle", -page.viewportSize()!.height * .5);
+      await expect.poll(cardHeight).toBeCloseTo(page.viewportSize()!.height, 0);
+      await expect.poll(() => popup.evaluate(el => getComputedStyle(el).paddingBottom)).toBe('0px');
+      await swipeDrawer("#station-card .drawer-handle", page.viewportSize()!.height * .4);
+      await expect.poll(cardHeight).toBeCloseTo(page.viewportSize()!.height * .455, 0);
       if (await page.evaluate(() => CSS.supports("overscroll-behavior", "contain")))
         expect(await body.evaluate(el => getComputedStyle(el).getPropertyValue("overscroll-behavior"))).toBe("contain");
       await swipeDrawer("#station-card .drawer-handle");
@@ -154,9 +161,15 @@ try {
       await expect(popup).toBeHidden();
       await expect(page.locator("#stations .station").first()).toBeVisible();
       await openDrawer();
-      // The Windows WebKit port doesn't emit pointerdown for touchscreen.tap.
-      if (name === "webkit") await page.locator("#station-backdrop").click({ position: { x: 10, y: 10 } });
-      else await page.locator("#station-backdrop").tap({ position: { x: 10, y: 10 } });
+      // Non-modal details keep search and the exposed map interactive.
+      await expect(popup).not.toHaveAttribute('aria-modal', 'true');
+      await expect(page.locator('#station-backdrop')).toBeHidden();
+      await page.locator('#search').focus();
+      await expect(page.locator('#search')).toBeFocused();
+      await expect(popup).toBeVisible();
+      await page.locator('#map').tap({position:{x:20,y:100}});
+      await expect(popup).toBeVisible();
+      await page.locator('#station-card-close').tap();
       await expect(popup).toBeHidden();
       await expect(page.locator("#stations .station").first()).toBeVisible();
       expect(errors).toEqual([]);
@@ -168,6 +181,7 @@ try {
       await swipeDrawer("#list-drawer .drawer-handle", -page.viewportSize()!.height * .5);
       await settledList();
       await expect.poll(visibleListHeight).toBeCloseTo(page.viewportSize()!.height, 0);
+      await expect.poll(() => list.evaluate(el => getComputedStyle(el).paddingBottom)).toBe('0px');
       await expect(page.locator("#list-viewport")).toHaveAttribute("data-expanded", "");
       expect(await page.evaluate(() => document.elementFromPoint(40, 40)?.closest('[data-slot="drawer-popup"]')?.id)).toBe("list-drawer");
       await page.locator("#stations .station").first().tap();

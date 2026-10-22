@@ -1,6 +1,7 @@
 import { test, expect } from "bun:test";
 import { priceParts, priceHTML } from "../src/price.ts";
-import { openingHours } from "../src/hours.ts";
+import { openingHours, openingClock } from "../src/hours.ts";
+import { stationMapLinks } from "../src/views.ts";
 import { historyChart } from "../src/chart.ts";
 
 test("prices raise only the final fractional digit, preserving currency placement", () => {
@@ -74,4 +75,28 @@ test("step charts connect consecutive confirmed hours but break across gaps and 
       presence: [{ observed_hour: 9, present: false }],
     }),
   ).toContain("Geen bevestigde prijzen");
+});
+
+
+test('opening-hours marker follows Amsterdam time across daylight saving and midnight', () => {
+  expect(openingClock(new Date('2026-01-10T12:30:00Z'))).toEqual({ day: 5, percent: 56.25, label: '13:30' });
+  expect(openingClock(new Date('2026-07-10T11:30:00Z')).label).toBe('13:30');
+  const html = openingHours([{ dayOfWeek: ['MONDAY'], opens: '00:00', closes: '24:00' }], new Date('2026-01-11T23:00:00Z'));
+  expect(html).toContain('Huidige tijd: 00:00');
+  expect(html).toContain('left:0%');
+  expect(html).toContain('<li class="today"><span>Ma</span>');
+});
+
+test('map links search a station name and address without starting directions', () => {
+  const station = { title: 'Shell & Test', address: { streetAddress: 'Teststraat 1', city: 'Utrecht' }, country_name: 'Nederland', latitude: 52, longitude: 5 };
+  const html = stationMapLinks(station);
+  const links = [...html.matchAll(/href="([^"]+)"/g)].map(m => new URL(m[1]!.replaceAll('&amp;', '&')));
+  expect(links[0]!.searchParams.get('q')).toBe('Shell & Test');
+  expect(links[0]!.searchParams.get('ll')).toBe('52,5');
+  expect(links[0]!.searchParams.has('sll')).toBe(false);
+  expect(links[1]!.searchParams.get('query')).toBe('Shell & Test, Teststraat 1, Utrecht, Nederland');
+  expect(links[1]!.pathname).toBe('/maps/search/');
+  expect(html).not.toContain('dir_action');
+  expect(html).not.toContain('daddr=');
+  expect(stationMapLinks({ ...station, title: '' })).toContain('q=Teststraat');
 });

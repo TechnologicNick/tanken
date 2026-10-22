@@ -45,7 +45,7 @@ export function stationList(drawerAsset: string) {
       if (!desired || id !== revision || !mobile.matches) return;
       // Keep the SSR list accessible if the optional offline asset isn't cached.
       viewport.hidden = popup.hidden = false;
-      viewport.style.cssText = 'position:fixed;inset:auto 0 0;z-index:950;max-height:45.5dvh;overflow:auto;background:#f8f9f5;padding:16px';
+      viewport.style.cssText = 'position:fixed;inset:auto 0 0;z-index:950;max-height:45.5dvh;overflow:auto;background:#f8f9f5;padding:16px 16px 0';
       closeButton.style.display = 'block';
     }
   }

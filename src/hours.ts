@@ -14,7 +14,12 @@ const minutes = (v: unknown) =>
     : null;
 const clock = (v: number) =>
   `${String(Math.floor(v / 60)).padStart(2, "0")}:${String(v % 60).padStart(2, "0")}`;
-export function openingHours(hours: any[]) {
+export function openingClock(now = new Date()) {
+  const parts = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Amsterdam', weekday: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(now);
+  const value = (type: string) => parts.find(part => part.type === type)!.value;
+  return { day: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].indexOf(value('weekday')), percent: (Number(value('hour')) * 60 + Number(value('minute'))) / 14.4, label: `${value('hour')}:${value('minute')}` };
+}
+export function openingHours(hours: any[], now = new Date()) {
   if (!hours?.length) return "<p>Openingstijden niet bekend.</p>";
   const intervals: [number, number][][] = days.map(() => []);
   const known = new Set<number>();
@@ -33,13 +38,8 @@ export function openingHours(hours: any[]) {
       }
     }
   }
-  const today = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].indexOf(
-    new Intl.DateTimeFormat("en-US", {
-      timeZone: "Europe/Amsterdam",
-      weekday: "short",
-    }).format(new Date()),
-  );
-  return `<div class="opening-hours"><div class="hours-axis" aria-hidden="true"><span>00</span><span>12</span><span>24</span></div><ol>${days
+  const current = openingClock(now);
+  return `<div class="opening-hours"><div class="hours-axis" aria-hidden="true"><span>00</span><span>12</span><span>24</span></div><div class="hours-grid"><ol>${days
     .map((_, i) => {
       const merged: [number, number][] = [];
       for (const interval of intervals[i]!.sort((a, b) => a[0] - b[0])) {
@@ -57,7 +57,7 @@ export function openingHours(hours: any[]) {
         : known.has(i)
           ? "Gesloten"
           : "Niet bekend";
-      return `<li${i === today ? ' class="today"' : ""}><span>${labels[i]}</span><div class="hours-track" aria-hidden="true">${merged.map(([a, b]) => `<i style="left:${a / 14.4}%;width:${(b - a) / 14.4}%"></i>`).join("")}</div><span>${text}</span></li>`;
+      return `<li${i === current.day ? ' class="today"' : ""}><span>${labels[i]}</span><div class="hours-track" aria-hidden="true">${merged.map(([a, b]) => `<i style="left:${a / 14.4}%;width:${(b - a) / 14.4}%"></i>`).join("")}</div><span>${text}</span></li>`;
     })
-    .join("")}</ol></div>`;
+    .join("")}</ol><div class="hours-clock" role="img" aria-label="Huidige tijd: ${current.label}"><i style="left:${current.percent}%" title="${current.label}"></i></div></div></div>`;
 }

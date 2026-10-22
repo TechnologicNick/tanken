@@ -85,10 +85,32 @@ function bounds() {
 let brush: ReturnType<typeof mapBrush> | undefined;
 let brushTimer: ReturnType<typeof setTimeout> | undefined;
 const desktop = matchMedia("(min-width: 601px)");
+type MapArea = { top: number; bottom: number };
+let mobileArea: MapArea | undefined;
+function exposedArea(details = false): MapArea {
+  const rect = map.getContainer().getBoundingClientRect();
+  const top = Math.max(0, controls.getBoundingClientRect().bottom - rect.top);
+  let bottom = $("mobile-toggle").getBoundingClientRect().top - rect.top - 12;
+  const popup = details || document.body.classList.contains("station-card-open")
+    ? $("station-card")
+    : document.body.classList.contains("list-open") ? $("list-drawer") : undefined;
+  if (popup) {
+    const handle = popup.querySelector<HTMLElement>('.drawer-handle')!;
+    // Use the destination snap point even while the drawer is animating in.
+    bottom = (popup.parentElement!.hasAttribute('data-expanded') ? 0 : map.getSize().y * .545) + handle.offsetTop;
+  }
+  return { top, bottom: Math.min(map.getSize().y, bottom) };
+}
+function captureMobileArea() {
+  const area = exposedArea();
+  if (area.bottom > area.top + 1) mobileArea = area;
+}
 function listBounds() {
   const size = map.getSize();
-  const sw = map.containerPointToLatLng([size.x * 0.25, size.y * 0.75]);
-  const ne = map.containerPointToLatLng([size.x * 0.75, size.y * 0.25]);
+  if (!desktop.matches && !mobileArea) captureMobileArea();
+  const area = mobileArea || { top: 0, bottom: size.y };
+  const sw = map.containerPointToLatLng(desktop.matches ? [size.x * 0.25, size.y * 0.75] : [0, area.bottom]);
+  const ne = map.containerPointToLatLng(desktop.matches ? [size.x * 0.75, size.y * 0.25] : [size.x, area.top]);
   return [
     Math.max(-85, sw.lat),
     Math.max(-180, sw.lng),
@@ -210,7 +232,7 @@ function refresh() {
     sort: sortSelect.value,
   });
   if (brush?.value) params.set("brush", brush.value);
-  else if (desktop.matches) params.set("listBounds", listBounds());
+  else params.set("listBounds", listBounds());
   if (page > 1) params.set("page", String(page));
   $<HTMLInputElement>("bounds").value = params.get("bounds")!;
   latest = { id: ++revision, query: params.toString() };
@@ -278,6 +300,7 @@ function connect() {
 }
 // Keep useful in-flight replies during gestures.
 map.on("zoomstart", () => {
+  if (!cameraMove && !desktop.matches) captureMobileArea();
   zooming = true;
   zoomChanged = true;
   pins.hold();
@@ -286,6 +309,7 @@ map.on("zoomend", () => {
   zooming = false;
 });
 map.on("movestart", () => {
+  if (!cameraMove && !desktop.matches) captureMobileArea();
   page = 1;
   moving = true;
   clearTimeout(debounce);
@@ -343,10 +367,39 @@ $("locate").onclick = () => {
   );
 };
 const list = stationList(data.drawer);
+if (!desktop.matches) captureMobileArea();
 function toggleMap(show: boolean) {
   void list.show(!show);
 }
-const panel = stationPanel(data.drawer, toggleMap, pins.highlight, list.parent);
+let cameraMove = false;
+let previousView: { center: Leaflet.LatLng; zoom: number; area: MapArea | undefined } | undefined;
+function animateCamera(center: Leaflet.LatLng, zoom: number) {
+  map.stop();
+  cameraMove = true;
+  map.once('moveend', () => { cameraMove = false; });
+  map.flyTo(center, zoom, { animate: !matchMedia('(prefers-reduced-motion: reduce)').matches, duration: .45 });
+}
+map.on('dragstart', () => {
+  cameraMove = false;
+  if (!desktop.matches) captureMobileArea();
+});
+const panel = stationPanel(data.drawer, toggleMap, pins.highlight, list.parent, {
+  select(station) {
+    if (desktop.matches) return;
+    previousView ||= { center: map.getCenter(), zoom: map.getZoom(), area: mobileArea && { ...mobileArea } };
+    const size = map.getSize(), area = exposedArea(true);
+    const y = area.bottom > area.top ? (area.top + area.bottom) / 2 : size.y / 2;
+    const center = map.unproject(map.project([station.lat, station.lng]).add([0, size.y / 2 - y]));
+    animateCamera(center, map.getZoom());
+  },
+  close(restore) {
+    const view = previousView;
+    previousView = undefined;
+    if (!view || !restore) return;
+    mobileArea = view.area;
+    animateCamera(view.center, view.zoom);
+  },
+});
 function brushChanged(finished: boolean) {
   $("list-area").hidden = !!brush?.active;
   const hint = document.querySelector<HTMLElement>(".list-area-hint")!;
@@ -440,15 +493,17 @@ schedule();
 
 map.on("resize", () => {
   page = 1;
+  if (!desktop.matches) captureMobileArea();
   schedule();
 });
 desktop.addEventListener("change", () => {
+  mobileArea = undefined;
   page = 1;
   schedule();
 });
 doubleTapDragZoom(map);
 locationSearch((location) => {
-  panel.close();
+  panel.close(false);
   toggleMap(true);
   map.setView([location.lat, location.lng], 13);
   schedule();

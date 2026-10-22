@@ -6,6 +6,7 @@ export function stationPanel(
   showMap: (show: boolean) => void,
   highlight: (station: MapStation | null) => void,
   parentDrawer: () => Promise<DrawerController | undefined>,
+  camera: { select(station: MapStation): void; close(restore: boolean): void },
 ) {
   const list = document.getElementById("stations")!;
   const root = document.getElementById("station-panel")!;
@@ -21,6 +22,7 @@ export function stationPanel(
   let selected: MapStation | null = null,
     hovered: MapStation | null = null;
   let returnToMap = true,
+    restoreMap = true,
     open = false,
     revision = 0,
     pending: AbortController | undefined;
@@ -47,6 +49,7 @@ export function stationPanel(
     }
   }
   function finish() {
+    const wasOpen = open;
     if (open && mobile.matches && returnToMap) showMap(true);
     open = false;
     ++revision;
@@ -55,8 +58,10 @@ export function stationPanel(
     document.body.classList.remove("station-card-open");
     highlight(null);
     sync();
+    if (wasOpen) camera.close(restoreMap);
   }
-  function close() {
+  function close(restore = true) {
+    restoreMap = restore;
     if (drawer?.isOpen) drawer.close();
     else {
       finish();
@@ -68,7 +73,7 @@ export function stationPanel(
       library ||= import(drawerAsset);
       let createDrawer: typeof import("./drawer.ts").createDrawer;
       try {
-        ({ createDrawer } = await library);
+        ({ createStationDrawer: createDrawer } = await library);
       } catch {
         // If this optional asset was never cached, keep the offline card usable.
         library = undefined;
@@ -87,7 +92,9 @@ export function stationPanel(
       }
       parent = nextParent;
       drawer ||= createDrawer(root, {
-        modal: true,
+        modal: false,
+        disablePointerDismissal: true,
+        initialFocus: false,
         swipeDirection: "down",
         parent,
         finalFocus: parent ? undefined : "#mobile-toggle",
@@ -109,6 +116,7 @@ export function stationPanel(
     pending = new AbortController();
     selected = value;
     returnToMap = fromMap;
+    restoreMap = true;
     hovered = null;
     open = true;
     title.textContent = selected.title;
@@ -122,7 +130,7 @@ export function stationPanel(
       const url = new URL(href, location.href);
       url.searchParams.set("card", "1");
       const [, response] = await Promise.all([
-        present(),
+        present().then(() => { if (id === revision && !fromMap && mobile.matches) camera.select(value); }),
         fetch(url, { signal: pending.signal }),
       ]);
       const html = await response.text();

@@ -1,20 +1,23 @@
 import { createDrawer, type DrawerOptions } from './drawer/controller.ts';
 
 // This styling travels with the optional drawer asset, rather than initial CSS.
-export function createStationListDrawer(root: HTMLElement, options: DrawerOptions) {
+export function createStationDrawer(root: HTMLElement, options: DrawerOptions = {}) {
   if (!document.getElementById('station-list-styles')) {
     const style = document.createElement('style');
     style.id = 'station-list-styles';
     style.textContent = `@media(max-width:600px){
-.map-ready #list-viewport{position:fixed;inset:0;display:flex;align-items:end;pointer-events:none;z-index:950}
-.map-ready #list-viewport[data-expanded]{z-index:1001}
-.map-ready #list-drawer{display:flex;flex-direction:column;position:relative;width:100%;height:100dvh;padding:18px 16px calc(12px + env(safe-area-inset-bottom));background:#f8f9f5;border-radius:20px 20px 0 0;pointer-events:auto}
-#list-viewport[data-expanded] #list-drawer{border-radius:0;padding-top:calc(18px + env(safe-area-inset-top))}
-#list-body{min-height:0;flex-shrink:0;height:calc(100% - var(--drawer-snap-point-offset,0px) - var(--drawer-swipe-movement-y,0px) - 15px);overflow-y:auto;overscroll-behavior:contain;transition:height calc(360ms * var(--drawer-swipe-strength,1)) cubic-bezier(.32,.72,0,1)}
-#list-drawer[data-swiping] #list-body{transition:none}
-@media(prefers-reduced-motion:reduce){#list-body{transition:none}}
+#list-viewport,#station-card-viewport{position:fixed;inset:0;width:100%;display:flex;align-items:end;pointer-events:none;z-index:950}
+#list-viewport[data-expanded]{z-index:1001}
+#station-card-viewport{z-index:1100}
+#list-drawer,#station-card{display:flex;flex-direction:column;position:relative;width:100%;height:100dvh;max-height:none;padding:18px 16px clamp(0px,calc(var(--drawer-snap-point-offset,0px) + var(--drawer-swipe-movement-y,0px)),calc(100dvh - 100px));background:#f8f9f5;border-radius:20px 20px 0 0;pointer-events:auto;transition:transform calc(360ms * var(--drawer-swipe-strength,1)) cubic-bezier(.32,.72,0,1),padding-bottom calc(360ms * var(--drawer-swipe-strength,1)) cubic-bezier(.32,.72,0,1)}
+[data-expanded] #list-drawer,[data-expanded] #station-card{border-radius:0;padding-top:calc(18px + env(safe-area-inset-top))}
+#list-body,#station-card-body{min-height:0;flex:1;overflow-y:auto;overscroll-behavior:contain}
+#station-card-title{flex-shrink:0}
+#list-drawer[data-swiping],#station-card[data-swiping]{transition:none}
+@media(prefers-reduced-motion:reduce){#list-drawer,#station-card{transition:none}}
 #list-close{display:block;position:absolute;top:6px;right:8px;padding:3px 10px;background:transparent;color:var(--green);font-size:24px}
-#list-viewport[data-expanded] #list-close{top:calc(6px + env(safe-area-inset-top))}
+[data-expanded] #list-close,[data-expanded] #station-card-close{top:calc(6px + env(safe-area-inset-top))}
+#station-backdrop{display:none}
 }`;
     document.head.append(style);
   }

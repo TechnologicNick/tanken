@@ -227,7 +227,14 @@ select {
 #locate {
   top: 20px;
   right: 20px;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border-radius: 50%;
+  background: white;
+  color: var(--green);
 }
+#locate svg { display: block; width: 22px; height: 22px; margin: auto; fill: currentColor; }
 .leaflet-top.leaflet-left {
   top: 10px;
 }
@@ -285,7 +292,7 @@ nav {
   margin-top: 20px;
 }
 .navigation-links { display: flex; flex-wrap: wrap; gap: 8px; }
-.navigation-links .navigate { flex: 1; min-width: 130px; }
+.navigation-links .navigate { flex: 1; min-width: 130px; margin-top: 0; }
 .detail-page form {
   display: flex;
   gap: 15px;
@@ -390,7 +397,7 @@ td {
     position: relative;
     width: 100%;
     max-height: 78dvh;
-    padding-bottom: calc(22px + env(safe-area-inset-bottom));
+    padding-bottom: 0;
     border-radius: 20px 20px 0 0;
     pointer-events: auto;
   }
@@ -438,7 +445,7 @@ td {
   .leaflet-control-zoom { display: none; }
   #search-status:not(:empty) { background: white; padding: 6px; border-radius: 8px; }
   .leaflet-top.leaflet-left { top: var(--map-controls-height, 180px); }
-  #locate { top: calc(var(--map-controls-height, 180px) + 10px); }
+  #locate { top: auto; bottom: calc(45.5dvh + 12px); right: 12px; }
   .map-ready:not(.list-open) #list-drawer:not([data-native-drawer]) { display: none; }
   .list-open #mobile-toggle { visibility: hidden; }
   #mobile-toggle:not([hidden]) {
@@ -528,7 +535,7 @@ td {
 }
 .opening-hours li {
   display: grid;
-  grid-template-columns: 22px minmax(50px, 1fr) minmax(82px, auto);
+  grid-template-columns: 22px minmax(50px, 1fr) 100px;
   gap: 8px;
   align-items: center;
   padding: 5px 0;
@@ -539,7 +546,7 @@ td {
 .hours-axis {
   display: flex;
   justify-content: space-between;
-  margin: 0 100px 0 30px;
+  margin: 0 108px 0 30px;
   color: var(--muted);
   font-size: 9px;
 }
@@ -550,6 +557,9 @@ td {
   position: relative;
   overflow: hidden;
 }
+.hours-grid { position: relative; }
+.hours-clock { position: absolute; inset: 0 108px 0 30px; pointer-events: none; }
+.hours-clock i { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--green); transform: translateX(-1px); }
 .hours-track i {
   position: absolute;
   top: 0;

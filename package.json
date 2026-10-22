@@ -18,7 +18,8 @@
     "test:touch": "node scripts/touch-browser-test.ts",
     "test:drawer": "node scripts/drawer-browser-test.ts",
     "stats": "bun run scripts/stats.ts",
-    "test:locking": "bun test ./test/locking.integration.ts"
+    "test:locking": "bun test ./test/locking.integration.ts",
+    "test:mobile": "node scripts/mobile-map-browser-test.ts"
   },
   "dependencies": {
     "@floating-ui/utils": "0.2.11",

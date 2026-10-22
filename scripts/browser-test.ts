@@ -290,22 +290,22 @@ try {
         "role",
         "dialog",
       );
-      await expect(page.locator("#station-card")).toHaveAttribute(
-        "aria-modal",
-        "true",
-      );
+      await expect(page.locator("#station-card")).not.toHaveAttribute("aria-modal", "true");
       await expect(page.locator("#station-card-title")).toHaveText(
         "Tango Oost",
       );
       await expect(page.locator("#station-card-body article")).toContainText(
         "Shop",
       );
-      await expect(page.getByRole('link', {name:'Navigeer met Apple Kaarten ↗'})).toBeVisible();
-      const googleLink = page.getByRole('link', {name:'Navigeer met Google Maps ↗'});
+      await expect(page.getByRole('link', {name:'Apple Kaarten ↗'})).toBeVisible();
+      const googleLink = page.getByRole('link', {name:'Google Maps ↗'});
       await expect(googleLink).toBeVisible();
       const googleUrl = new URL((await googleLink.getAttribute('href'))!);
       expect(googleUrl.searchParams.get('api')).toBe('1');
-      expect(googleUrl.searchParams.get('destination')).toBe('52.08,5.5');
+      expect(googleUrl.pathname).toBe('/maps/search/');
+      expect(googleUrl.searchParams.get('query')).toContain('Tango Oost');
+      expect(googleUrl.searchParams.get('query')).toContain('Teststraat 1');
+      expect(googleUrl.searchParams.has('dir_action')).toBe(false);
       expect(new URL(page.url()).pathname).toBe('/');
       expect(drawerRequests).toBe(1);
       await expect
