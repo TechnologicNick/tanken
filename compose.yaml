@@ -2,7 +2,8 @@ services:
   tanken:
     build: .
     restart: unless-stopped
-    network_mode: bridge
+    networks:
+      - nginx-proxy
     depends_on:
       postgres:
         condition: service_healthy
@@ -30,7 +31,6 @@ services:
   postgres:
     image: postgres:18
     restart: unless-stopped
-    network_mode: bridge
     environment:
       POSTGRES_USER: tanken
       POSTGRES_DB: tanken
@@ -44,6 +44,9 @@ services:
       interval: 5s
       timeout: 5s
       retries: 12
+networks:
+  nginx-proxy:
+    external: true
 volumes:
   postgres-data:
   postgres-socket:
