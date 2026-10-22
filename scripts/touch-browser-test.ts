@@ -112,7 +112,8 @@ try {
           !el.hasAttribute("data-starting-style") && el.getAnimations().length === 0
         )).toBe(true);
       };
-      const swipeDrawer = async (selector: string, distance = 250) => {
+      // Base UI dismisses slow swipes beyond half the popup's height.
+      const swipeDrawer = async (selector: string, distance = 350) => {
         touchTarget = selector;
         const rect = (await page.locator(selector).boundingBox())!;
         const p = { x: rect.x + 3, y: rect.y + Math.min(rect.height / 2, 30) };

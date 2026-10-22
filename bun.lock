@@ -5,7 +5,7 @@
     "": {
       "name": "tanken",
       "dependencies": {
-        "@data-slot/drawer": "^1.1.2",
+        "@floating-ui/utils": "0.2.11",
         "leaflet": "1.9.4",
       },
       "devDependencies": {
@@ -17,9 +17,7 @@
     },
   },
   "packages": {
-    "@data-slot/core": ["@data-slot/core@1.1.2", "", {}, "sha512-xcxdiWJ/fPUqobE2PZdi96FIT/xASSsmtRtlyTWOro/mh5ZSJ8blB7t2anV12J7irNSKMov2+WpWFvAeikR5Vw=="],
-
-    "@data-slot/drawer": ["@data-slot/drawer@1.1.2", "", { "dependencies": { "@data-slot/core": "1.1.2" } }, "sha512-WiBYU9uLBQSpWigbwbK6qhyma9sjP73nuNaz/ecoNccKYDLaShGxAzcmX0pqqZl7qcbyVeXfNyGLVHABCZru/g=="],
+    "@floating-ui/utils": ["@floating-ui/utils@0.2.11", "", {}, "sha512-RiB/yIh78pcIxl6lLMG0CgBXAZ2Y0eVHqMPYugu+9U0AeT6YBeiJpf7lbdJNIugFP5SIjwNRgo4DhR1Qxi26Gg=="],
 
     "@playwright/test": ["@playwright/test@1.64.1", "", { "dependencies": { "playwright": "1.64.1" }, "bin": { "playwright": "cli.js" } }, "sha512-IaYGml/nSOiZWROfPtuIL7neuu9qDOZ3TNvNljUIrhDMxiGTgPjzj/g9p9RxpS2tSepPDRY+UwAaEeiKtUvIAg=="],
 

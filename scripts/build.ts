@@ -23,7 +23,13 @@ const assets: Record<string, string> = {};
 for (const output of built.outputs) {
   const name = output.path.split(/[\\/]/).pop()!;
   const key = name.split("-")[0];
-  assets[key] = `/assets/${name}`;
+  if (key === "drawer") {
+    // Keep the upstream MIT notice with distributed copies of the port.
+    const body = `${await output.text()}\n/*\n${await Bun.file("src/client/drawer/LICENSE.base-ui").text()}\n*/\n`;
+    const licensedName = `drawer-${hash(body)}.js`;
+    await Bun.write(`dist/assets/${licensedName}`, body);
+    assets[key] = `/assets/${licensedName}`;
+  } else assets[key] = `/assets/${name}`;
 }
 for (const [key, source, ext] of [
   ["leaflet", "node_modules/leaflet/dist/leaflet.js", "js"],

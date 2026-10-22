@@ -1,4 +1,4 @@
-import type { DrawerController } from "@data-slot/drawer";
+import type { DrawerController } from "./drawer.ts";
 import type { MapStation } from "../map-markers.ts";
 
 export function stationPanel(
@@ -15,7 +15,7 @@ export function stationPanel(
   const closeButton = document.getElementById("station-card-close")!;
   const mobile = matchMedia("(max-width: 600px)");
   let drawer: DrawerController | undefined;
-  let library: Promise<typeof import("@data-slot/drawer")> | undefined;
+  let library: Promise<typeof import("./drawer.ts")> | undefined;
   let selected: MapStation | null = null,
     hovered: MapStation | null = null;
   let returnToMap = true,
@@ -64,7 +64,7 @@ export function stationPanel(
   async function present() {
     if (mobile.matches) {
       library ||= import(drawerAsset);
-      let createDrawer: typeof import("@data-slot/drawer").createDrawer;
+      let createDrawer: typeof import("./drawer.ts").createDrawer;
       try {
         ({ createDrawer } = await library);
       } catch {

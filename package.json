@@ -16,11 +16,12 @@
     "test:browser": "node scripts/browser-test.ts",
     "test:search": "node scripts/search-browser-test.ts",
     "test:touch": "node scripts/touch-browser-test.ts",
+    "test:drawer": "node scripts/drawer-browser-test.ts",
     "stats": "bun run scripts/stats.ts",
     "test:locking": "bun test ./test/locking.integration.ts"
   },
   "dependencies": {
-    "@data-slot/drawer": "^1.1.2",
+    "@floating-ui/utils": "0.2.11",
     "leaflet": "1.9.4"
   },
   "devDependencies": {

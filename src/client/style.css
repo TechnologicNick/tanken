@@ -360,8 +360,6 @@ td {
     inset: 0;
     background: #0003;
     z-index: 1050;
-    opacity: calc(1 - var(--drawer-swipe-progress, 0));
-    transition: opacity 180ms;
   }
   #station-card-viewport {
     position: fixed;
@@ -379,19 +377,6 @@ td {
     padding-bottom: calc(22px + env(safe-area-inset-bottom));
     border-radius: 20px 20px 0 0;
     pointer-events: auto;
-    transform: translateY(var(--drawer-swipe-amount-y, 0px));
-    transition: transform 180ms;
-  }
-  #station-card[data-starting-style],
-  #station-card[data-ending-style] {
-    transform: translateY(100%);
-  }
-  #station-card[data-swiping] {
-    transition: none;
-  }
-  #station-backdrop[data-starting-style],
-  #station-backdrop[data-ending-style] {
-    opacity: 0;
   }
   .drawer-handle {
     display: block;
