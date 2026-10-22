@@ -1,57 +1,93 @@
 # Tanken
 
-A mobile-friendly fuel-price map built from analysis of the supplied ANWB Onderweg & Wegenwacht **5.21.4** XAPK. The interface is Dutch. It uses live ANWB station data, with a separate web interface and OpenStreetMap basemap.
+A Dutch map of ANWB fuel prices, built with Bun, TypeScript and PostgreSQL. The server collects the entire available international catalogue hourly; browsers query PostgreSQL rather than ANWB. Lists, station details and price-history charts are rendered on the server. Leaflet adds the interactive map.
 
-## Run
-
-Requires Node.js 22 or newer.
+## Run with Compose
 
 ```powershell
-npm install
-npm start
+Copy-Item .env.example .env
+# Fill in POSTGRES_PASSWORD, DATABASE_URL and the ANWB settings.
+docker compose up -d --build
 ```
 
-Open **http://localhost:3000** on this computer. On an iPhone connected to the same Wi-Fi, open **http://192.168.1.55:3000** in Safari (the server prints the current network addresses). Keep the computer and server running. If Windows prompts about the firewall, allow Node on your private network. You can use Safari → Share → Add to Home Screen.
+Use a long URL-safe database password, or percent-encode it in DATABASE_URL. The Compose database URL uses POSTGRES_PASSWORD; the DATABASE_URL in `.env` is for running Bun directly against the development database port. Existing local ANWB settings are in the ignored `.anwb-local.json`; copy its clientId and apiKey into ANWB_CLIENT_ID and ANWB_API_KEY for Docker. The image excludes both local configuration files.
 
-The code uses browser features available in iOS 17. Tested using Playwright Chromium and mobile WebKit; not on a physical iOS 17 device. Safari geolocation requires an HTTPS origin on a phone. Place/address/postcode search and manual map browsing work over local HTTP. Use your own HTTPS reverse proxy/hosting if you want location access or access away from home; this project has not been deployed publicly.
+The application migrates the database, starts a web process and a separate hourly collector, and immediately collects if the current UTC hour has not completed. PostgreSQL data persists in the `postgres-data` volume.
 
-## Features
+Both services use Docker's default **bridge** network. The explicit postgres link provides hostname resolution on that network. Tanken listens on `0.0.0.0:$PORT`; PORT defaults to 3000. VIRTUAL_HOST and VIRTUAL_PORT are passed to the application container for an existing nginx-proxy installation. VIRTUAL_PORT defaults to PORT and must identify the application's internal listening port. These variables do not configure DNS or start a reverse proxy. Put the proxy on the same default bridge network, with HTTPS for installed PWAs and location access. Forward WebSocket upgrades at `/ws/stations`, preserving the public Host header. The app sends automatic keepalive pings before 30 seconds of inactivity.
 
-- Petrol E10, diesel B7, Euro 98 E5, premium diesel, LPG and CNG.
-- Price markers, cheapest stations highlighted, list sorted by price or straight-line distance from the map centre.
-- Search Dutch places, addresses and postcodes; optional device location.
-- Station details, fuel prices, opening hours, facilities and Apple Maps navigation.
-- Explicit “search this area” control after moving the map, plus saved fuel and map position.
-- Two-minute in-memory API cache, request deduplication, input validation and upstream timeouts.
-- No invented prices, account login, or analytics. API failure is shown explicitly.
-
-## Local API settings
-
-The extracted application-level identifiers have already been saved in `.anwb-local.json`, ignored by Git and never served by the web server. They are identifiers bundled with the Android app, not personal account credentials. Alternatively set `ANWB_CLIENT_ID` and `ANWB_API_KEY` in the server environment. Never place them in frontend JavaScript or commit the local settings.
-
-To reproduce extraction from the existing analysis artifacts:
+For direct host/network access and development PostgreSQL access:
 
 ```powershell
-python scripts/extract-config.py .analysis/resources.txt
+docker compose -f compose.yaml -f compose.dev.yaml up -d --build
 ```
 
-The file `.analysis/resources.txt` is the output of Android SDK `aapt2 dump resources` on the base APK. For full steps and API evidence, see [docs/reverse-engineering.md](docs/reverse-engineering.md).
+Open http://localhost:3000, or the PORT configured in `.env`. This override publishes the app on `0.0.0.0` for access from other devices; PostgreSQL is available only at `127.0.0.1:54329`. The base Compose file publishes no host ports. Changing PORT also changes the development port mapping and the default VIRTUAL_PORT. A custom PORT of 3100 has been verified.
 
-## Verification
+## Develop with Bun
+
+Requires Bun 1.3.14 or newer; the image pins Bun 1.4.3 and PostgreSQL 18.
 
 ```powershell
-npm test
-npx playwright install chromium webkit
-# With npm start running in another terminal:
-npm run test:browser
+bun install --frozen-lockfile
+docker compose -f compose.yaml -f compose.dev.yaml up -d postgres
+bun run build
+bun run migrate
+bun run collect
+bun start
 ```
 
-Screenshots are written to `test-results/`. Browser checks use live upstream responses, so they require network access and working ANWB settings.
+Set DATABASE_URL in `.env` to the local PostgreSQL port with the same password. Bun reads `.env` automatically. The server can use either the ANWB environment variables or `.anwb-local.json`. `bun run dev` starts only the web server; `bun run collector` starts only the hourly process. Build again after changing browser code. Stop the Compose application before running a local server on the same port.
 
-## Data and scope
+## Data collection and storage
 
-This is an independent, personal-use prototype, not an ANWB product. The ANWB API is undocumented and may change or revoke its application identifiers. Responses include ANWB copyright and restrictions on reuse; public/commercial distribution would need the appropriate permission. No ANWB branding, imagery, app code or Mapbox tokens are included in the web interface.
+Live verification on 21 October 2026 found **133,154 distinct stations in 50 countries/territories**, with **292,787 station/fuel series**. All currently returned price currencies were EUR; currency changes are handled explicitly. Foreign IDs are retained as opaque strings.
 
-The API does not supply a last-price-change timestamp in the tested responses. “Opgehaald om” means the response retrieval time, possibly from the two-minute server cache. The displayed national average comes from ANWB; station price tiers come from ANWB as well. Prices at the pump take precedence. Foreign-station access was not verified; the app indicates that European prices require a logged-in account. No login or access restrictions are bypassed.
+The list endpoint has a 10,000-result limit, rather than a simple geographic-area limit. One request covers the Netherlands. Covering the complete catalogue requires at least `ceil(133154 / 10000) = 14` requests. The shipped 14 longitude strips cover the world and returned the same complete ID set as an exhaustive scan. Each initially returned 9,511 stations. See [query discovery](docs/query-discovery.md) for the verification and future maintenance.
 
-Search uses [PDOK Locatieserver](https://www.pdok.nl/restful-api/-/article/pdok-locatieserver-1). Map tiles use [OpenStreetMap](https://operations.osmfoundation.org/policies/tiles/) with visible attribution and normal browser caching; use a suitable tile provider for larger deployments. Fonts load from Google Fonts with system fallbacks. This app requires a network connection and does not provide offline fuel data.
+The collector runs at minute zero every UTC hour using Bun.cron, with a PostgreSQL advisory lock preventing overlap. It retries transient failures and subdivides an overfull shard automatically, preserving coverage. A successful hour is idempotent. A partial hour can be retried with `bun run collect`; successful areas are reread to reconcile the complete snapshot. Failed areas keep their previous observations. Missing stations get a presence transition, not a permanent closure flag.
+
+Only price, currency and availability changes create archive events. Zero means an unknown price; a formerly reported fuel disappearing from a response is recorded separately. Station metadata and current prices are stored independently. Exact retrieval times belong to shared collection batches, rather than every historical price. ANWB supplies no actual price-change timestamp: history shows hourly observations. Charts leave gaps during incomplete or missing collections and station absence. Past periods remain accessible through the older-period links.
+
+See [database design](docs/database.md) and [the migration](migrations/001_initial.sql). The initial real snapshot used about **21.6 MB for 292,787 price-history rows including the primary-key index**, approximately 74 bytes per event. The whole initial database used about 168 MiB. Future growth depends on actual changes: one change per series per day would add roughly 7.9 GB per year of price history at that measured density. These figures exclude WAL, backups and future bloat. `bun run stats` reports current row counts, archive sizes, recent collection results and update statistics; measure the actual change rate over time.
+
+## PWA and client size
+
+On desktop, an unfilled rectangle inset 25% from every map edge selects the sidebar stations; map pins still cover the whole viewport. Hold the right mouse button and drag to paint with a 124.8 px wide brush instead; closed loops fill their interior, including when the painted ends overlap or the stroke continues afterwards; strokes and filled loops share one opacity, so overlaps keep the same shade; strokes combine and remain attached to their geographic area through pan and zoom. The sidebar includes all painted stations, including outside the current viewport. A right-click without dragging clears the paint and restores the rectangle. The selection survives reloads in the same tab. Mobile lists use the full viewport. The map refreshes 150 ms after panning stops and immediately after zooming, using one persistent WebSocket. A single Leaflet canvas retains the station pins and compact labels. During zooming it keeps the existing canvas transformed until the matching response is ready, then commits the new groups once. Pending views are coalesced and stale replies ignored; the connection retries after interruption. Clicking a sidebar station or an individual map pin opens server-rendered information, a weekly opening-hours graphic and price history in a card next to the sidebar, or a swipe-to-dismiss drawer on mobile. Closing the mobile drawer restores the station list when opened from the list, or the map when opened from a pin. The drawer uses the package's default scroll and swipe handling, transitions, focus and dismissal. Hovering or focusing a sidebar station highlights its exact location, including when it belongs to a group. Station links retain ordinary navigation without JavaScript and on modified clicks. The map is enhanced with JavaScript; search forms, filters, station pages and SVG history work without it. The build enforces compressed initial budgets of 60 KiB JavaScript and 6 KiB CSS, including Leaflet and the service worker. The current initial build is about **50 KB JavaScript and 6.0 KB CSS**. Mobile station drawers use `@data-slot/drawer`, loaded only on first use (about 10.5 KiB gzip, with a separate 16 KiB budget) and cached for subsequent offline use. Detail pages load only the small shared PWA script. Fonts use the system font stack; there is no framework or client hydration.
+
+On HTTPS, Safari's Share → Add to Home Screen installs the PWA. It caches the application assets and up to 50 recently viewed pages/API responses. Previously viewed station history is readable offline, with its retrieval time and an offline indicator. Unvisited pages show an offline explanation. Map tiles require a connection and are not downloaded for offline use. Offline data is a browser cache, not a promise of current pump prices.
+
+The browser code uses iOS 17-compatible features. Double-tap and hold the second tap, then drag vertically for continuous one-finger zoom around the tapped point. On iOS, drag up to zoom in and down to zoom out; on other devices, drag down to zoom in and up to zoom out. Ordinary panning, double-tap zoom and pinch zoom remain available. `bun run test:touch` checks these gestures with native touch input in Chromium and dispatched touch events in WebKit. Automated checks also cover service-worker caching and JavaScript-disabled SSR. A physical iPhone running iOS 17 has not been tested.
+
+Search shows locations inline and moves the existing map when a result is selected. Without JavaScript, results stay in the home sidebar. Dutch place/address/postcode search uses the existing PDOK API with up to five suggestions after a 300 ms typing pause (at least two characters). Arrow keys and Enter select suggestions; Escape or clicking outside dismisses them. Requests are cancelled when the query changes and recent results are cached in memory. European search remains submit-only because the public Nominatim service prohibits autocomplete. European search uses GEOCODER_URL (default: Nominatim) and requires GEOCODER_USER_AGENT to identify the deployment with contact details. Results are cached for seven days; public-geocoder requests are serialized across server processes. Without that setting, map browsing and location access still work abroad.
+
+## Verification and operations
+
+```powershell
+bun run typecheck
+bun test test/domain.test.ts
+# DATABASE_URL or TEST_DATABASE_URL must allow creating disposable test databases:
+bun test test/integration.test.ts
+bun run test:locking
+bunx playwright install chromium webkit
+bun run test:browser
+bun run stats
+```
+
+`bun test`/`bun run test` run unit and PostgreSQL integration tests; database tests skip if no database URL exists. The locking regression takes about 35 seconds. Browser checks use an isolated fixture database and require Node 22.18+ or 24+ to drive Playwright; the app itself uses Bun only. They check automatic pan/zoom updates on a single WebSocket, retained canvas rendering, coverage above 500 stations, delayed zoom replies without intermediate repaints, reconnects, and offline restoration. They need no live ANWB requests. Screenshots are in `test-results/`.
+
+`GET /healthz` checks PostgreSQL and reports the latest collection status. Docker checks the actual PORT. Collection results/errors are JSON logs (`docker compose logs tanken`). `bun run rebalance` recalculates the minimum longitude-strip plan from the latest complete catalogue and verifies every ID against fresh API responses before activating it atomically. It retains the existing plan if verification fails. Automatic splitting prioritizes complete coverage; run rebalance after material catalogue growth to recover the minimum query count.
+
+Back up PostgreSQL using your usual pg_dump/pg_restore workflow. History partitions are created ahead of time and retained indefinitely; no raw upstream snapshots are stored. `docker compose down` preserves the database volume.
+
+## API and provenance
+
+The map uses `/ws/stations` with JSON requests `{ "id": 1, "query": "bounds=52,5,52.2,5.3&fuel=EURO95&sort=price" }`. Responses echo the monotonically increasing request ID and contain a `stations` payload or an `error`. Each socket runs at most one database query at a time, keeping only the latest queued view. HTTP endpoints remain available for SSR and cached offline data.
+
+Local endpoints are `/api/stations?bounds=south,west,north,east&fuel=EURO95`, `/api/stations/:id`, and `/api/stations/:id/history?fuel=EURO95&days=30`. IDs in these routes are internal numeric station IDs. Lists paginate at 50 stations. Maps represent every matching station using individual pins or counted groups on a single Leaflet canvas, with at most 4,000 drawn features. Group cells are anchored to world coordinates, independent of price sorting, and widen from 96 pixels at zoom 13 to 128 at zooms 11–12 and 160 at zooms 3–10. At zoom 14 and above, up to 4,000 stations are shown individually; overlapping price labels are hidden while their pins remain visible. Groups display their cheapest price and a station count (for example, `€ 1,839 ×12`); different currencies form separate groups. Group labels stay centered on their geographic anchors and inherit the price tier colour of their cheapest station. Click a group to zoom in or a pin to open its prices. The client requests a 35% buffer around the visible area and reuses its WebSocket during gestures. Requests accept `zoom` (3–18) and optional `mapBounds` containing `bounds`; list totals refer to `bounds`, while `mapStationCount` includes the buffer. History supports 1, 7, 30 and 365-day windows, 100 changes per table page, and older windows. Different currencies are never ranked as equivalent amounts.
+
+[Reverse-engineering notes](docs/reverse-engineering.md) document the original app investigation. This is an independent implementation, not an ANWB product. The upstream endpoint is undocumented and responses include restrictions on reuse; public/commercial distribution requires appropriate data permissions. Credentials stay on the backend. The displayed station price is an observation; the price at the pump is authoritative.
+
+Map tiles come from OpenStreetMap with attribution and normal browser caching. Choose a suitable tile provider for larger deployments. No Mapbox tokens, ANWB imagery, account login or analytics are included.
+
+History charts fit the available observations within the selected period, with step lines, date labels and visible points for isolated observations. Only confirmed hourly coverage is connected; successful local shards count even when another shard fails. Missing observations, unknown prices, station absence and currency changes break the line. Only changes are stored, as before. Prices display the last decimal as a smaller raised digit in HTML and canvas labels; Euro 95 is used consistently in the interface.

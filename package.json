@@ -3,7 +3,33 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "scripts": { "start": "node server.mjs", "test": "node --test test/*.test.mjs", "test:browser": "node scripts/browser-test.mjs" },
-  "dependencies": { "leaflet": "1.9.4" },
-  "devDependencies": { "@playwright/test": "^1.56.0" }
+  "scripts": {
+    "start": "bun run src/main.ts",
+    "dev": "bun run src/server.ts",
+    "build": "bun run scripts/build.ts",
+    "migrate": "bun run scripts/migrate.ts",
+    "collect": "bun run src/collector.ts --once",
+    "collector": "bun run src/collector.ts",
+    "rebalance": "bun run scripts/rebalance.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test test/*.test.ts",
+    "test:browser": "node scripts/browser-test.ts",
+    "test:search": "node scripts/search-browser-test.ts",
+    "test:touch": "node scripts/touch-browser-test.ts",
+    "stats": "bun run scripts/stats.ts",
+    "test:locking": "bun test ./test/locking.integration.ts"
+  },
+  "dependencies": {
+    "@data-slot/drawer": "^1.1.2",
+    "leaflet": "1.9.4"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.56.0",
+    "@types/bun": "^1.4.3",
+    "@types/leaflet": "^1.9.22",
+    "typescript": "^7.0.2"
+  },
+  "engines": {
+    "bun": ">=1.3.14"
+  }
 }

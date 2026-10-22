@@ -4,3 +4,7 @@ node_modules/
 *.xapk
 *.apk
 test-results/
+.env
+dist/
+coverage/
+*.dump

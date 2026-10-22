@@ -1,0 +1,8 @@
+# Optional host access for local development; production can use nginx-proxy.
+services:
+  tanken:
+    ports:
+      - "0.0.0.0:${PORT:-3000}:${PORT:-3000}"
+  postgres:
+    ports:
+      - "127.0.0.1:54329:5432"

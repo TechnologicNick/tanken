@@ -1,0 +1,9 @@
+.git
+.analysis
+.anwb-local.json
+.env
+*.apk
+*.xapk
+node_modules
+dist
+test-results

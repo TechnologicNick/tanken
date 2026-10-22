@@ -1,0 +1,44 @@
+services:
+  tanken:
+    build: .
+    restart: unless-stopped
+    network_mode: bridge
+    links:
+      - postgres:postgres
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PORT: ${PORT:-3000}
+      HOST: 0.0.0.0
+      VIRTUAL_HOST: ${VIRTUAL_HOST:-tanken.local}
+      VIRTUAL_PORT: ${VIRTUAL_PORT:-${PORT:-3000}}
+      DATABASE_URL: postgres://tanken:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/tanken
+      ANWB_CLIENT_ID: ${ANWB_CLIENT_ID:-}
+      ANWB_API_KEY: ${ANWB_API_KEY:-}
+      GEOCODER_URL: ${GEOCODER_URL:-https://nominatim.openstreetmap.org/search}
+      GEOCODER_USER_AGENT: ${GEOCODER_USER_AGENT:-}
+    expose:
+      - "${PORT:-3000}"
+    healthcheck:
+      test: ["CMD", "bun", "run", "scripts/healthcheck.ts"]
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+  postgres:
+    image: postgres:18
+    restart: unless-stopped
+    network_mode: bridge
+    environment:
+      POSTGRES_USER: tanken
+      POSTGRES_DB: tanken
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tanken -d tanken"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+volumes:
+  postgres-data:
