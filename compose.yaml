@@ -13,6 +13,7 @@ services:
       HOST: 0.0.0.0
       VIRTUAL_HOST: ${VIRTUAL_HOST:-tanken.local}
       VIRTUAL_PORT: ${VIRTUAL_PORT:-${PORT:-3000}}
+      LETSENCRYPT_HOST: ${VIRTUAL_HOST:-tanken.local}
       DATABASE_URL: postgres://tanken:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/tanken
       ANWB_CLIENT_ID: ${ANWB_CLIENT_ID:-}
       ANWB_API_KEY: ${ANWB_API_KEY:-}
@@ -36,7 +37,8 @@ services:
     volumes:
       - postgres-data:/var/lib/postgresql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U tanken -d tanken"]
+      # Initialization briefly starts a socket-only server; wait for TCP readiness.
+      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-p", "5432", "-U", "tanken", "-d", "tanken"]
       interval: 5s
       timeout: 5s
       retries: 12
