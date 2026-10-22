@@ -3,7 +3,12 @@ export function database(url = process.env.DATABASE_URL) {
   if (!url) throw new Error("DATABASE_URL is required. See README.md.");
   // The reserved collector connection owns a session advisory lock while HTTP
   // requests run. Never expire it while it is idle between SQL statements.
-  return new SQL(url, { max: 5, idleTimeout: 0, connectionTimeout: 10 });
+  return new SQL(url, {
+    path: process.env.DATABASE_SOCKET || undefined,
+    max: 5,
+    idleTimeout: 0,
+    connectionTimeout: 10,
+  });
 }
 export type Database = ReturnType<typeof database>;
 export const pgBounds = (bounds: number[]) => `{${bounds.join(",")}}`;
