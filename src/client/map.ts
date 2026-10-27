@@ -90,14 +90,16 @@ let mobileArea: MapArea | undefined;
 function exposedArea(details = false): MapArea {
   const rect = map.getContainer().getBoundingClientRect();
   const top = Math.max(0, controls.getBoundingClientRect().bottom - rect.top);
-  let bottom = $("mobile-toggle").getBoundingClientRect().top - rect.top - 12;
+  let bottom = map.getSize().y - (parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--list-peek-height")) || 200);
   const popup = details || document.body.classList.contains("station-card-open")
     ? $("station-card")
-    : document.body.classList.contains("list-open") ? $("list-drawer") : undefined;
+    : $("list-drawer");
   if (popup) {
     const handle = popup.querySelector<HTMLElement>('.drawer-handle')!;
     // Use the destination snap point even while the drawer is animating in.
-    bottom = (popup.parentElement!.hasAttribute('data-expanded') ? 0 : map.getSize().y * .545) + handle.offsetTop;
+    const offset = parseFloat(popup.style.getPropertyValue('--drawer-snap-point-offset'));
+    if (details) bottom = (popup.parentElement!.hasAttribute('data-expanded') ? 0 : map.getSize().y * .545) + handle.offsetTop;
+    else if (Number.isFinite(offset)) bottom = offset + handle.offsetTop;
   }
   return { top, bottom: Math.min(map.getSize().y, bottom) };
 }
@@ -367,6 +369,7 @@ $("locate").onclick = () => {
   );
 };
 const list = stationList(data.drawer);
+void list.ready.then(() => { if (!desktop.matches) { captureMobileArea(); schedule(); } });
 if (!desktop.matches) captureMobileArea();
 function toggleMap(show: boolean) {
   void list.show(!show);

@@ -1,3 +1,4 @@
+import { expandStationList } from './browser-drawer.ts';
 import { chromium, webkit, devices, expect, type Page } from '@playwright/test';
 import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
@@ -43,14 +44,23 @@ try {
       await expect.poll(() => new URL(page.url()).searchParams.has('listBounds')).toBe(true);
       await expect(page.locator('#loading')).toBeHidden();
       const controls = (await page.locator('.map-controls').boundingBox())!;
-      const toggle = (await page.locator('#mobile-toggle').boundingBox())!;
+      await expect(page.locator('#mobile-toggle')).toHaveCount(0);
+      const list = page.locator('#list-drawer');
+      await expect(list).toHaveAttribute('data-open', '');
+      await expect.poll(() => list.evaluate(el => el.getAnimations().length)).toBe(0);
+      await expect(list).toHaveAttribute('data-compact', '');
+      await expect(page.locator('#sort')).toBeHidden();
+      const rows = await page.locator('#stations .station').evaluateAll(els => els.slice(0, 2).map(el => ({top:el.getBoundingClientRect().top,bottom:el.getBoundingClientRect().bottom})));
+      expect(rows[0]!.bottom).toBeLessThan(page.viewportSize()!.height);
+      expect(rows[1]!.top).toBeLessThan(page.viewportSize()!.height);
+      expect(rows[1]!.bottom).toBeGreaterThan(page.viewportSize()!.height);
+      await pan(page);
       const initial = await selection(page);
       expect(initial.top).toBeCloseTo(controls.y + controls.height, 0);
-      expect(initial.bottom).toBeCloseTo(toggle.y - 12, 0);
+      expect(initial.bottom).toBeCloseTo((await list.locator('.drawer-handle').boundingBox())!.y, 0);
       const beforeOpen = new URL(page.url()).searchParams.get('listBounds');
-      await page.locator('#mobile-toggle').tap();
-      await expect(page.locator('#list-drawer')).toHaveAttribute('data-open', '');
-      await expect.poll(() => page.locator('#list-drawer').evaluate(el => el.getAnimations().length)).toBe(0);
+      await expandStationList(page);
+      await expect(page.locator('#sort')).toBeVisible();
       expect(new URL(page.url()).searchParams.get('listBounds')).toBe(beforeOpen);
       await pan(page);
       const handle = (await page.locator('#list-drawer .drawer-handle').boundingBox())!;
@@ -84,10 +94,11 @@ try {
       await expect.poll(() => new URL(page.url()).searchParams.get('listBounds')).toBe(previousSelection);
       await expect(page.locator('#loading')).toBeHidden();
       await page.locator('#list-close').tap();
-      await expect(page.locator('#list-drawer')).toBeHidden();
+      await expect(page.locator('#list-drawer')).toHaveAttribute('data-compact', '');
+      await expect.poll(() => list.evaluate(el => el.getAnimations().length)).toBe(0);
       expect(new URL(page.url()).searchParams.get('listBounds')).toBe(previousSelection);
       await pan(page);
-      expect((await selection(page)).bottom).toBeCloseTo((await page.locator('#mobile-toggle').boundingBox())!.y - 12, 0);
+      expect((await selection(page)).bottom).toBeCloseTo((await list.locator('.drawer-handle').boundingBox())!.y, 0);
       expect(errors).toEqual([]);
       console.log(`${name}: mobile selection, deferred drawer bounds, animated station centering and restoration, detail order and liter labels passed`);
     } finally { await browser.close(); }

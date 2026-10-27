@@ -97,7 +97,7 @@ export function stationPanel(
         initialFocus: false,
         swipeDirection: "down",
         parent,
-        finalFocus: parent ? undefined : "#mobile-toggle",
+        finalFocus: parent ? undefined : "#list-drawer",
         onOpenChange(value) {
           if (!value) finish();
         },

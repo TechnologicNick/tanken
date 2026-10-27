@@ -1,3 +1,4 @@
+import { expandStationList } from './browser-drawer.ts';
 import { chromium, webkit, devices, expect } from "@playwright/test";
 import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
@@ -256,8 +257,8 @@ try {
       await expect.poll(() => frames).toBeGreaterThan(beforeReconnect);
       expect(apiRequests).toBe(0);
       await page.screenshot({ path: `test-results/${name}-map.png` });
-      expect(drawerRequests).toBe(0);
-      await page.locator("#mobile-toggle").click();
+      expect(drawerRequests).toBe(1);
+      await expandStationList(page);
       await expect(page.locator("#list-drawer")).toHaveAttribute("data-open", "");
       await expect(page.locator("#map")).toBeVisible();
       await expect(page.locator("#search")).toBeVisible();
@@ -371,18 +372,20 @@ try {
           }),
         )
         .toBe(true);
+      const cachedStationHref = await eastLink.getAttribute('href');
       await context.setOffline(true);
       await page.reload();
-      await expect(
-        page.locator("#stations .station").filter({ hasText: "Tango Oost" }),
-      ).toHaveCount(1);
-      await page.locator("#mobile-toggle").click();
-      await eastLink.click();
-      await expect(page.locator("#station-card-body article")).toContainText(
-        "Shop",
-      );
-      await page.keyboard.press("Escape");
-      await expect(page.locator("#station-card")).toBeHidden();
+      await expect(page.locator('#stations .station').first()).toBeVisible();
+      await expect(page.locator('#list-drawer')).toHaveAttribute('data-open', '');
+      await expect(page.locator('#list-drawer')).toHaveAttribute('data-compact', '');
+      // The new compact footprint can produce a different station selection on
+      // reload. Verify the previously opened card is still cached independently.
+      const cachedCard = await page.evaluate(async href => {
+        const url = new URL(href!, location.href);
+        url.searchParams.set('card', '1');
+        return (await fetch(url)).text();
+      }, cachedStationHref);
+      expect(cachedCard).toContain('Shop');
       await context.setOffline(false);
       // Cache a station page and its server-rendered archive.
       await page.goto(`${base}stations/${station}?fuel=EURO95`);
@@ -475,7 +478,7 @@ try {
       await expect(page.locator("#station-card")).toBeHidden();
       await expect(page.locator("#map")).toBeVisible();
       expect(errors).toEqual([]);
-      await page.locator("#mobile-toggle").tap();
+      await expandStationList(page);
       await page.locator("#search").fill("Teststad");
       await expect(page.locator("#search-results button")).toHaveCount(2);
       await page.locator("#search-results button").nth(1).tap();

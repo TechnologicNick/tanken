@@ -50,6 +50,12 @@ async function remember(request: Request, response: Response) {
 }
 self.addEventListener("message", (event) => {
   const data = event.data;
+  if (data?.type === "drawer") {
+    event.waitUntil(caches.open(ASSETS).then(async cache => {
+      if (!await cache.match(DRAWER_ASSET)) await cache.add(DRAWER_ASSET);
+    }).catch(() => {}));
+    return;
+  }
   if (
     data?.type !== "viewport" ||
     typeof data.query !== "string" ||

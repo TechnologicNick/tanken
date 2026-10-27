@@ -48,7 +48,6 @@ try {
         });
         await page.goto(base);
         await expect(page.locator("canvas.station-canvas")).toBeVisible();
-        if (mobile) await page.locator("#mobile-toggle").tap();
         const input = page.locator("#search"), options = page.locator("#search-results button");
         await input.fill("O");
         await page.waitForTimeout(400);
@@ -83,7 +82,6 @@ try {
         expect(await input.evaluate(el => getComputedStyle(el).outlineColor)).toBe('rgb(18, 62, 52)');
         await expect(page.locator("#map")).toBeVisible();
         await expect.poll(() => new URL(page.url()).searchParams.get("bounds")).toContain("5.");
-        if (mobile) await page.locator("#mobile-toggle").tap();
         await input.fill("");
         await expect(options).toHaveCount(0);
         await page.locator('[name="country"]').selectOption("eu");

@@ -1,70 +1,69 @@
-import type { DrawerController } from './drawer.ts';
+import type { StationListDrawer } from './list-drawer.ts';
 
 export function stationList(drawerAsset: string) {
   const root = document.getElementById('list-panel')!;
   const popup = document.getElementById('list-drawer')!;
   const viewport = document.getElementById('list-viewport')!;
-  const toggle = document.getElementById('mobile-toggle')!;
-  const closeButton = document.getElementById('list-close')!;
   const mobile = matchMedia('(max-width: 600px)');
-  let drawer: DrawerController | undefined;
+  let drawer: StationListDrawer | undefined;
   let library: Promise<typeof import('./drawer.ts')> | undefined;
-  let desired = false;
   let revision = 0;
   document.body.classList.add('map-ready');
-  toggle.hidden = false;
-  function sync() {
-    document.body.classList.toggle('list-open', desired && mobile.matches);
-    toggle.setAttribute('aria-expanded', String(desired));
-    toggle.setAttribute('aria-controls', popup.id);
-    toggle.textContent = 'Bekijk tankstations';
-  }
   function clearFallback() {
-    viewport.style.cssText = closeButton.style.cssText = '';
+    viewport.style.cssText = '';
   }
-  async function show(show: boolean) {
-    desired = show;
-    const id = ++revision;
-    sync();
+  async function show(expand: boolean) {
     if (!mobile.matches) return;
-    if (!show) { clearFallback(); drawer?.close(); return; }
+    if (drawer) {
+      if (!expand) drawer.setSnapPoint(drawer.compactSnapPoint);
+      return;
+    }
+    const id = ++revision;
+    popup.toggleAttribute('data-compact', true);
     try {
       const { createStationListDrawer }: typeof import('./drawer.ts') = await (library ||= import(drawerAsset));
-      if (!desired || id !== revision || !mobile.matches) return;
+      if (id !== revision || !mobile.matches) return;
+      // The persistent drawer can load before the first worker controls the page.
+      // Ask the worker to retain this mobile-only asset once it becomes ready.
+      if ('serviceWorker' in navigator)
+        void navigator.serviceWorker.ready.then(registration => registration.active?.postMessage({ type: 'drawer' }));
       clearFallback();
-      drawer ||= createStationListDrawer(root, {
+      drawer = createStationListDrawer(root, {
         modal: false,
         initialFocus: false,
         disablePointerDismissal: true,
-        finalFocus: toggle,
-        onOpenChange(open) { desired = open; sync(); },
+        finalFocus: false,
+        onOpenChange(open, details) {
+          if (!open) {
+            details.cancel();
+            drawer?.setSnapPoint(drawer.compactSnapPoint);
+          }
+        },
       });
-      drawer.open('mobile-toggle');
+      drawer.open();
     } catch {
       library = undefined;
-      if (!desired || id !== revision || !mobile.matches) return;
-      // Keep the SSR list accessible if the optional offline asset isn't cached.
+      if (id !== revision || !mobile.matches) return;
+      // Keep the SSR preview accessible if the optional offline asset is absent.
       viewport.hidden = popup.hidden = false;
-      viewport.style.cssText = 'position:fixed;inset:auto 0 0;z-index:950;max-height:45.5dvh;overflow:auto;background:#f8f9f5;padding:16px 16px 0';
-      closeButton.style.display = 'block';
+      viewport.style.cssText = 'position:fixed;inset:auto 0 0;z-index:950;height:var(--list-peek-height,200px);overflow:auto;background:#f8f9f5';
     }
   }
-  toggle.addEventListener('click', () => { void show(!desired); });
-  closeButton.addEventListener('click', () => {
-    if (!drawer?.isOpen) void show(false);
-  });
   mobile.addEventListener('change', () => {
     ++revision;
     clearFallback();
     drawer?.destroy(); drawer = undefined;
     viewport.hidden = popup.hidden = false;
-    desired = false; sync();
+    popup.removeAttribute('data-compact');
+    popup.querySelector<HTMLElement>('.list-summary')!.inert = false;
+    if (mobile.matches) void show(false);
   });
-  sync();
+  const ready = show(false);
   return {
     show,
+    ready,
     async parent() {
-      if (!mobile.matches || !desired) return;
+      if (!mobile.matches) return;
       await show(true);
       return drawer;
     },

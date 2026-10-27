@@ -1,7 +1,7 @@
-import { createDrawer, type DrawerOptions } from './drawer/controller.ts';
+import { createDrawer, type DrawerController, type DrawerOptions } from './drawer/controller.ts';
 
 // This styling travels with the optional drawer asset, rather than initial CSS.
-export function createStationDrawer(root: HTMLElement, options: DrawerOptions = {}) {
+function installStyles() {
   if (!document.getElementById('station-list-styles')) {
     const style = document.createElement('style');
     style.id = 'station-list-styles';
@@ -22,12 +22,16 @@ export function createStationDrawer(root: HTMLElement, options: DrawerOptions = 
 }`;
     document.head.append(style);
   }
+}
+
+export function createStationDrawer(root: HTMLElement, options: DrawerOptions = {}) {
+  installStyles();
   const viewport = root.querySelector<HTMLElement>('[data-slot="drawer-viewport"]')!;
   return createDrawer(root, {
     ...options,
     // The former 65vh opening height, reduced by 30%, plus a full-screen stop.
-    snapPoints: [0.455, 1],
-    defaultSnapPoint: 0.455,
+    snapPoints: options.snapPoints ?? [0.455, 1],
+    defaultSnapPoint: options.defaultSnapPoint ?? 0.455,
     snapToSequentialPoints: true,
     onSnapPointChange(point, details) {
       options.onSnapPointChange?.(point, details);
@@ -38,4 +42,55 @@ export function createStationDrawer(root: HTMLElement, options: DrawerOptions = 
       if (!details.isCanceled && !open) viewport.removeAttribute('data-expanded');
     },
   });
+}
+
+export type StationListDrawer = DrawerController & { compactSnapPoint: string };
+
+export function createStationListDrawer(root: HTMLElement, options: DrawerOptions = {}): StationListDrawer {
+  installStyles();
+  const popup = root.querySelector<HTMLElement>('[data-slot=drawer-popup]')!;
+  const summary = popup.querySelector<HTMLElement>('.list-summary')!;
+  summary.style.transition = 'none';
+  popup.toggleAttribute('data-compact', true);
+  summary.inert = true;
+  // Measure the real pills and first row; leave 24px of the next row as a hint.
+  const first = popup.querySelector<HTMLElement>('.station');
+  const previewHeight = Math.ceil(first
+    ? first.getBoundingClientRect().bottom - popup.getBoundingClientRect().top + 9 + 24
+    : 180);
+  const height = Math.min(previewHeight, Math.floor(innerHeight * .4));
+  summary.style.removeProperty('transition');
+  document.documentElement.style.setProperty('--list-peek-height', `${height}px`);
+  const compactSnapPoint = `${height}px`;
+  const controller = createStationDrawer(root, {
+    ...options,
+    snapPoints: [compactSnapPoint, 0.455, 1],
+    defaultSnapPoint: compactSnapPoint,
+    onSnapPointChange(point, details) {
+      options.onSnapPointChange?.(point, details);
+      // A persistent list settles at its lowest point instead of dismissing.
+      // Reject dismissal here, before the primitive starts its exit transition.
+      if (point === null && !details.isCanceled) {
+        details.cancel();
+        controller.setSnapPoint(compactSnapPoint);
+        return;
+      }
+      if (!details.isCanceled && point === compactSnapPoint)
+        popup.querySelector<HTMLElement>('#list-body')!.scrollTop = 0;
+    },
+  });
+  // The flex body's size follows the drawer's animated padding during both
+  // dragging and settling. Observe it rather than waiting for a snap selection.
+  const resize = new ResizeObserver(() => {
+    if (!controller.isOpen || popup.hasAttribute('data-nested-drawer-open')) return;
+    const visibleHeight = innerHeight - popup.getBoundingClientRect().top;
+    const compact = visibleHeight < (height + innerHeight * .455) / 2;
+    if (popup.hasAttribute('data-compact') === compact) return;
+    popup.toggleAttribute('data-compact', compact);
+    summary.inert = compact;
+  });
+  resize.observe(popup.querySelector<HTMLElement>('#list-body')!);
+  const destroy = controller.destroy;
+  controller.destroy = () => { resize.disconnect(); destroy(); };
+  return Object.assign(controller, { compactSnapPoint });
 }

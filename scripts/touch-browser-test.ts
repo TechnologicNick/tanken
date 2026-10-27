@@ -105,7 +105,7 @@ try {
         // Isolate independent scroll scenarios from Chromium's compositor fling.
         await page.goto(`${base}?bounds=52.02,4.99,52.16,5.25`);
         await expect(page.locator("canvas.station-canvas")).toBeVisible();
-        if (await page.locator("#map").isVisible()) await page.locator("#mobile-toggle").tap();
+        await expect(page.locator("#list-drawer")).toHaveAttribute("data-open", "");
         await page.locator("#stations .station").first().tap();
         await expect(body.locator("article")).toBeVisible();
         await expect.poll(() => popup.evaluate(el =>
@@ -177,6 +177,10 @@ try {
       const settledList = () => expect.poll(() => list.evaluate(el => el.getAnimations().length)).toBe(0);
       await settledList();
       const visibleListHeight = () => list.evaluate(el => innerHeight - el.getBoundingClientRect().top);
+      const peekHeight = await page.evaluate(() => parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--list-peek-height')));
+      await expect.poll(visibleListHeight).toBeCloseTo(peekHeight, 0);
+      await swipeDrawer("#list-drawer .drawer-handle", -page.viewportSize()!.height * .25);
+      await settledList();
       await expect.poll(visibleListHeight).toBeCloseTo(page.viewportSize()!.height * .455, 0);
       await swipeDrawer("#list-drawer .drawer-handle", -page.viewportSize()!.height * .5);
       await settledList();
@@ -194,10 +198,14 @@ try {
       await settledList();
       await expect.poll(visibleListHeight).toBeCloseTo(page.viewportSize()!.height * .455, 0);
       await swipeDrawer("#list-drawer .drawer-handle");
-      await expect(page.locator("#list-drawer")).toBeHidden();
+      await settledList();
+      await expect.poll(visibleListHeight).toBeCloseTo(peekHeight, 0);
+      await swipeDrawer("#list-drawer .drawer-handle");
+      await settledList();
+      await expect(page.locator("#list-drawer")).toHaveAttribute("data-open", "");
       await expect(page.locator("#map")).toBeVisible();
       await expect(page.locator("#search")).toBeVisible();
-      await expect(page.locator("#mobile-toggle")).toBeVisible();
+      await expect(page.locator("#mobile-toggle")).toHaveCount(0);
       await context.close();
       console.log(`${name}: map gestures, drawer handle dismissal, content scrolling and swipe dismissal at the top passed`);
     } finally { await browser.close(); }
