@@ -29,6 +29,7 @@ export function stationList(drawerAsset: string) {
         void navigator.serviceWorker.ready.then(registration => registration.active?.postMessage({ type: 'drawer' }));
       clearFallback();
       drawer = createStationListDrawer(root, {
+        defaultOpen: true,
         modal: false,
         initialFocus: false,
         disablePointerDismissal: true,
@@ -40,7 +41,6 @@ export function stationList(drawerAsset: string) {
           }
         },
       });
-      drawer.open();
     } catch {
       library = undefined;
       if (id !== revision || !mobile.matches) return;

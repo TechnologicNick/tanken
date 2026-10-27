@@ -1,4 +1,4 @@
-import { expandStationList } from './browser-drawer.ts';
+import { expandStationList, expectLocationAboveDrawers } from './browser-drawer.ts';
 import { chromium, webkit, devices, expect, type Page } from '@playwright/test';
 import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
@@ -40,6 +40,13 @@ try {
       const errors: string[] = [];
       page.on('pageerror', error => errors.push(error.message));
       await page.route('https://tile.openstreetmap.org/**', route => route.abort());
+      await page.addInitScript(() => {
+        (window as any).drawerTransitions = [];
+        document.addEventListener('transitionrun', event => {
+          if ((event.target as Element).id === 'list-drawer')
+            (window as any).drawerTransitions.push(event.propertyName);
+        });
+      });
       await page.goto(`${base}?bounds=52.02,4.99,52.16,5.25`);
       await expect.poll(() => new URL(page.url()).searchParams.has('listBounds')).toBe(true);
       await expect(page.locator('#loading')).toBeHidden();
@@ -49,6 +56,15 @@ try {
       await expect(list).toHaveAttribute('data-open', '');
       await expect.poll(() => list.evaluate(el => el.getAnimations().length)).toBe(0);
       await expect(list).toHaveAttribute('data-compact', '');
+      await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+      expect(await page.evaluate(() => (window as any).drawerTransitions)).toEqual([]);
+      await expectLocationAboveDrawers(page);
+      await page.evaluate(() => {
+        (window as any).locationRequests = 0;
+        navigator.geolocation.getCurrentPosition = () => { (window as any).locationRequests++; };
+      });
+      await page.locator('#list-locate').tap();
+      expect(await page.evaluate(() => (window as any).locationRequests)).toBe(1);
       await expect(page.locator('#sort')).toBeHidden();
       const rows = await page.locator('#stations .station').evaluateAll(els => els.slice(0, 2).map(el => ({top:el.getBoundingClientRect().top,bottom:el.getBoundingClientRect().bottom})));
       expect(rows[0]!.bottom).toBeLessThan(page.viewportSize()!.height);
@@ -71,6 +87,9 @@ try {
       const coordinates = { lat: Number(await station.getAttribute('data-lat')), lng: Number(await station.getAttribute('data-lng')) };
       await station.tap();
       await expect(page.locator('#station-card-body article')).toBeVisible();
+      await expectLocationAboveDrawers(page);
+      await page.locator('#station-locate').tap();
+      expect(await page.evaluate(() => (window as any).locationRequests)).toBe(2);
       await expect.poll(() => new URL(page.url()).searchParams.get('bounds')).not.toBe(previousBounds);
       await expect(page.locator('#loading')).toBeHidden();
       const centered = await page.evaluate(({lat, lng}) => {
@@ -90,6 +109,7 @@ try {
       await pan(page);
       await page.locator('#station-card-close').tap();
       await expect(page.locator('#station-card')).toBeHidden();
+      await expectLocationAboveDrawers(page);
       await expect.poll(() => new URL(page.url()).searchParams.get('bounds')).toBe(previousBounds);
       await expect.poll(() => new URL(page.url()).searchParams.get('listBounds')).toBe(previousSelection);
       await expect(page.locator('#loading')).toBeHidden();

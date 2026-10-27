@@ -350,7 +350,7 @@ fuelSelect.onchange = sortSelect.onchange = () => {
   refresh();
 };
 let locationMarker: Leaflet.CircleMarker | undefined;
-$("locate").onclick = () => {
+const locate = () => {
   if (!navigator.geolocation) {
     status("Locatie wordt niet ondersteund.");
     return;
@@ -368,6 +368,7 @@ $("locate").onclick = () => {
     { timeout: 10000, maximumAge: 60000 },
   );
 };
+document.querySelectorAll<HTMLButtonElement>(".locate").forEach(button => { button.onclick = locate; });
 const list = stationList(data.drawer);
 void list.ready.then(() => { if (!desktop.matches) { captureMobileArea(); schedule(); } });
 if (!desktop.matches) captureMobileArea();

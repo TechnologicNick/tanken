@@ -343,7 +343,22 @@ export function createDrawer(root: HTMLElement, options: DrawerOptions = {}): Dr
   };
   entry.controller = controller;
   controllers.set(controller, entry); bindings.set(root, controller);
-  sync(); update();
-  if (options.open ?? options.defaultOpen) controller.open();
+  if (options.open ?? options.defaultOpen) {
+    // An initially open root mounts in its resting state, like the React root;
+    // it does not perform an imperative open/enter transition on first render.
+    const transition = popup.style.getPropertyValue('transition');
+    const priority = popup.style.getPropertyPriority('transition');
+    popup.style.setProperty('transition', 'none', 'important');
+    previousFocus = doc.activeElement instanceof HTMLElement ? doc.activeElement : null;
+    open = true;
+    mount(); sync(); update(); refreshAncestors(entry);
+    popup.getBoundingClientRect();
+    if (transition) popup.style.setProperty('transition', transition, priority);
+    else popup.style.removeProperty('transition');
+    focus(options.initialFocus, popup);
+    void complete(true, generation);
+  } else {
+    sync(); update();
+  }
   return controller;
 }

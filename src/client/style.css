@@ -220,12 +220,12 @@ select {
   height: 100%;
   min-height: 300px;
 }
-#locate {
+.locate {
   position: absolute;
   z-index: 600;
   box-shadow: 0 2px 12px #0002;
 }
-#locate {
+.locate {
   top: 20px;
   right: 20px;
   width: 44px;
@@ -235,7 +235,8 @@ select {
   background: white;
   color: var(--green);
 }
-#locate svg { display: block; width: 22px; height: 22px; margin: auto; fill: currentColor; }
+.drawer-locate { display: none; }
+.locate svg { display: block; width: 22px; height: 22px; margin: auto; fill: currentColor; }
 .leaflet-top.leaflet-left {
   top: 10px;
 }
@@ -422,7 +423,7 @@ td {
   aside {
     padding: 22px 18px;
   }
-  #locate {
+  .locate {
     top: 70px;
     right: 10px;
   }
@@ -440,7 +441,10 @@ td {
   .leaflet-control-zoom { display: none; }
   #search-status:not(:empty) { background: white; padding: 6px; border-radius: 8px; }
   .leaflet-top.leaflet-left { top: var(--map-controls-height, 180px); }
-  #locate { top: auto; bottom: calc(var(--list-peek-height,200px) + 12px); right: 12px; }
+  #locate { display: none; }
+  .drawer-locate { display: block; top: auto; bottom: calc(100% + 12px); right: 12px; }
+  #station-locate { margin-bottom: 1px; }
+  body:has(#station-card:not([hidden])) #list-locate { visibility: hidden; }
   .map-ready #list-viewport { position: fixed; inset: 0; display: flex; align-items: end; pointer-events: none; z-index: 950; }
   .map-ready #list-drawer:not([data-native-drawer]) { width: 100%; height: var(--list-peek-height,200px); overflow: hidden; padding: 18px 16px 0; background: #f8f9f5; border-radius: 20px 20px 0 0; pointer-events: auto; }
   .list-summary { display: grid; grid-template-rows: 1fr; opacity: 1; visibility: visible; transition: grid-template-rows 450ms cubic-bezier(.22,1,.36,1),opacity 200ms,visibility 0s; }
