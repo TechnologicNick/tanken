@@ -1,3 +1,5 @@
+import { createNesting } from './nesting.ts';
+import { drawerStyles } from './styles.ts';
 import { createLifecycle, type CSSProperties } from './lifecycle.ts';
 import { renderViewport } from './viewport.ts';
 import { createChangeEventDetails, type ChangeDetails } from './platform.ts';
@@ -37,15 +39,12 @@ export interface DrawerController {
   readonly triggerId: string | null;
 }
 interface Entry {
-  root: HTMLElement;
   popup: HTMLElement;
   parent?: Entry;
   children: Set<Entry>;
   present: boolean;
   height: number;
-  progress: number;
-  swiping: boolean;
-  order: number;
+  nesting: ReturnType<typeof createNesting>;
   controller: DrawerController;
   update(): void;
 }
@@ -53,7 +52,6 @@ const entries = new Set<Entry>();
 const controllers = new WeakMap<DrawerController, Entry>();
 const bindings = new WeakMap<HTMLElement, DrawerController>();
 let nextId = 0;
-let order = 0;
 
 // Base UI leaves animation/layout to consumers. Shared styles are lazy, so
 // desktop/initial bundles pay no cost. Gesture rules live in the ported files.
@@ -61,16 +59,7 @@ function installStyles(doc: Document) {
   if (doc.getElementById('native-drawer-styles')) return;
   const style = doc.createElement('style');
   style.id = 'native-drawer-styles';
-  style.textContent = `
-[data-slot=drawer-popup][data-native-drawer]{--drawer-swipe-movement-x:0px;--drawer-swipe-movement-y:0px;--drawer-snap-point-offset:0px;--drawer-swipe-strength:1;transform:translate(var(--drawer-swipe-movement-x),calc(var(--drawer-snap-point-offset) + var(--drawer-swipe-movement-y)));transition:transform calc(360ms * var(--drawer-swipe-strength)) cubic-bezier(.32,.72,0,1);touch-action:auto}
-[data-native-drawer][data-starting-style],[data-native-drawer][data-ending-style]{transform:translate(var(--drawer-exit-x,0px),var(--drawer-exit-y,100%))}
-[data-native-drawer][data-swiping],[data-native-drawer][data-nested-drawer-swiping]{transition:none!important;user-select:none}
-[data-native-drawer][data-nested-drawer-open]{--stack-progress:clamp(0,var(--drawer-swipe-progress,0),1);--stack-step:.05;--stack-peek-offset:max(0px,calc((var(--nested-drawers) - var(--stack-progress)) * 1rem));--stack-scale-base:max(0,calc(1 - var(--nested-drawers) * var(--stack-step)));--stack-scale:calc(var(--stack-scale-base) + var(--stack-step) * var(--stack-progress));--stack-shrink:calc(1 - var(--stack-scale));transform:translate(var(--drawer-swipe-movement-x),calc(var(--drawer-snap-point-offset) + var(--drawer-swipe-movement-y) - var(--stack-peek-offset) - var(--stack-shrink) * var(--drawer-frontmost-height))) scale(var(--stack-scale));transform-origin:center bottom}
-[data-native-drawer-backdrop]{opacity:calc(1 - var(--drawer-swipe-progress,0));transition:opacity 360ms}
-[data-native-drawer-backdrop][data-starting-style],[data-native-drawer-backdrop][data-ending-style]{opacity:0}
-[data-native-drawer-backdrop][data-swiping]{transition:none}
-@media(prefers-reduced-motion:reduce){[data-native-drawer],[data-native-drawer-backdrop]{transition:none!important}}
-`;
+  style.textContent = drawerStyles;
   doc.head.append(style);
   if (typeof CSS !== 'undefined' && 'registerProperty' in CSS) {
     for (const name of ['--drawer-swipe-movement-x', '--drawer-swipe-movement-y', '--drawer-snap-point-offset', '--drawer-swipe-strength', '--drawer-swipe-progress']) {
@@ -124,11 +113,20 @@ export function createDrawer(root: HTMLElement, options: DrawerOptions = {}): Dr
   popup.dataset.nativeDrawer = '';
   content?.setAttribute('data-base-ui-drawer-content', '');
   backdrop?.setAttribute('data-native-drawer-backdrop', '');
-  popup.style.setProperty('--drawer-exit-x', direction === 'left' ? '-100%' : direction === 'right' ? '100%' : '0px');
-  popup.style.setProperty('--drawer-exit-y', direction === 'up' ? '-100%' : direction === 'down' ? '100%' : '0px');
+  popup.dataset.swipeAxis = direction === 'down' || direction === 'up' ? 'y' : 'x';
+  if (options.snapPoints?.length) { popup.toggleAttribute('data-snap-points', true); backdrop?.toggleAttribute('data-snap-points', true); }
   installStyles(doc);
   const parent = options.parent ? controllers.get(options.parent) : [...entries].filter(item => item.popup.contains(root)).at(-1);
-  const entry: Entry = { root, popup, parent, children: new Set(), present: false, height: 0, progress: 0, swiping: false, order: 0, controller: undefined!, update };
+  // React batches the root's nested-state setters within an event. Commit their
+  // DOM equivalents together: measuring between progress=0 and swiping=false
+  // would flush the resting transform while transitions are still disabled.
+  let nestingUpdatePending = false;
+  function scheduleNestingUpdate() {
+    if (nestingUpdatePending) return;
+    nestingUpdatePending = true;
+    queueMicrotask(() => { nestingUpdatePending = false; update(); });
+  }
+  const entry: Entry = { popup, parent, children: new Set(), present: false, height: 0, nesting: createNesting(parent?.nesting, scheduleNestingUpdate), controller: undefined!, update };
   parent?.children.add(entry);
   entries.add(entry);
   const state: DrawerState = { open: false, mounted: false, nested: !!parent, nestedOpenDrawerCount: 0, viewportElement: viewport, popupElement: popup };
@@ -143,31 +141,53 @@ export function createDrawer(root: HTMLElement, options: DrawerOptions = {}): Dr
       swipeAreaActiveRef: { current: false }, snapPoints: options.snapPoints,
       activeSnapPoint: snapPoint,
       setActiveSnapPoint: setSnapPoint,
-      notifyParentSwipingChange: parent ? value => { entry.swiping = value; refreshAncestors(entry); } : undefined,
-      notifyParentSwipeProgressChange: parent ? value => { entry.progress = value; refreshAncestors(entry); } : undefined,
+      notifyParentSwipingChange: parent?.nesting.onNestedSwipingChange,
+      notifyParentSwipeProgressChange: parent?.nesting.onNestedSwipeProgressChange,
     },
   };
   const stack = modalStack(doc);
   const modalEntry: ModalEntry = { popup, portal, modal, dismissible: !options.disablePointerDismissal, escape: options.closeOnEscape ?? true, present: false,
     close: (reason, event) => change(false, createChangeEventDetails(reason, event)) };
+  let notifiedHeight = 0, notifiedPresence = false;
   function update() {
     if (destroyed || !lifecycle) return;
-    const children = descendants(entry).filter(child => child.present);
-    const front = children.slice().sort((a, b) => b.order - a.order)[0];
+    // Dialog's open count excludes ending drawers. DrawerRoot's separate
+    // presence flag retains their measured height until the exit completes.
+    const children = descendants(entry).filter(child => child.present && child.controller.isOpen);
     state.open = open; state.mounted = mounted;
     state.nestedOpenDrawerCount = children.length;
-    if (mounted && !children.length) entry.height = popup.offsetHeight;
+    const { hasNestedDrawer } = entry.nesting;
+    const offsetHeight = mounted ? popup.offsetHeight : 0;
+    const stretched = entry.height > 0 && context.root.frontmostHeight > entry.height && offsetHeight > entry.height;
+    if (!mounted) entry.height = 0;
+    else if (!stretched && !(entry.height > 0 && hasNestedDrawer)) entry.height = offsetHeight;
+    entry.nesting.onPopupHeightChange(entry.height);
     context.root.popupHeight = entry.height;
-    context.root.frontmostHeight = front?.height || entry.height;
+    context.root.frontmostHeight = entry.nesting.frontmostHeight;
     context.root.activeSnapPoint = snapPoint;
     popup.toggleAttribute('data-nested', !!parent);
     popup.toggleAttribute('data-nested-drawer-open', !!children.length);
-    popup.toggleAttribute('data-nested-drawer-swiping', children.some(child => child.swiping));
+    popup.toggleAttribute('data-nested-drawer-swiping', entry.nesting.nestedSwiping);
     popup.style.setProperty('--nested-drawers', `${children.length}`);
-    popup.style.setProperty('--drawer-height', `${entry.height}px`);
+    if (entry.height && (hasNestedDrawer || popup.hasAttribute('data-ending-style'))) popup.style.setProperty('--drawer-height', `${entry.height}px`);
+    else popup.style.removeProperty('--drawer-height');
     popup.style.setProperty('--drawer-frontmost-height', `${context.root.frontmostHeight}px`);
-    popup.style.setProperty('--drawer-swipe-progress', `${front?.progress || 0}`);
+    popup.style.setProperty('--drawer-swipe-progress', `${entry.nesting.progress}`);
     lifecycle.update(); lifecycle.flush();
+    syncNestingParent();
+  }
+  function syncNestingParent() {
+    // DrawerPopup layout effects: height is forwarded only while open; presence
+    // includes the ending transition. Dedupe like React effect dependencies.
+    const height = open ? entry.nesting.frontmostHeight : 0;
+    if (height !== notifiedHeight) {
+      notifiedHeight = height;
+      parent?.nesting.onNestedFrontmostHeightChange(height);
+    }
+    if (entry.present !== notifiedPresence) {
+      notifiedPresence = entry.present;
+      parent?.nesting.onNestedDrawerPresenceChange(entry.present);
+    }
   }
   function applyStyles(styles: CSSProperties) {
     for (const [key, value] of Object.entries(styles)) {
@@ -228,7 +248,7 @@ export function createDrawer(root: HTMLElement, options: DrawerOptions = {}): Dr
     entry.present = modalEntry.present = false;
     stack.remove(modalEntry);
     if (!options.keepMounted && placeholder?.parentNode) { placeholder.replaceWith(portal); placeholder = undefined; }
-    update(); refreshAncestors(entry);
+    update(); syncNestingParent(); refreshAncestors(entry);
     if (!destroyed) focus(options.finalFocus, trigger || previousFocus);
   }
   async function complete(value: boolean, id: number) {
@@ -250,7 +270,6 @@ export function createDrawer(root: HTMLElement, options: DrawerOptions = {}): Dr
     open = value;
     if (value) {
       previousFocus = doc.activeElement instanceof HTMLElement ? doc.activeElement : null;
-      entry.order = ++order;
       popup.removeAttribute('data-ending-style'); backdrop?.removeAttribute('data-ending-style');
       popup.setAttribute('data-starting-style', ''); backdrop?.setAttribute('data-starting-style', '');
       mount(); sync(); update(); refreshAncestors(entry);
@@ -267,7 +286,7 @@ export function createDrawer(root: HTMLElement, options: DrawerOptions = {}): Dr
       popup.removeAttribute('data-starting-style'); backdrop?.removeAttribute('data-starting-style');
       popup.setAttribute('data-ending-style', ''); backdrop?.setAttribute('data-ending-style', '');
       if (options.snapPoints?.length) snapPoint = defaultSnap;
-      sync(); update();
+      sync(); update(); refreshAncestors(entry);
       void complete(false, generation);
     }
   }

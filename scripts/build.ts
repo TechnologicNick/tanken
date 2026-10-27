@@ -24,8 +24,12 @@ for (const output of built.outputs) {
   const name = output.path.split(/[\\/]/).pop()!;
   const key = name.split("-")[0];
   if (key === "drawer") {
-    // Keep the upstream MIT notice with distributed copies of the port.
-    const body = `${await output.text()}\n/*\n${await Bun.file("src/client/drawer/LICENSE.base-ui").text()}\n*/\n`;
+    // Both upstreams use the same MIT terms. Include both copyright notices
+    // and the complete shared permission notice in distributed copies.
+    const baseLicense = await Bun.file("src/client/drawer/LICENSE.base-ui").text();
+    const shadcnLicense = await Bun.file("src/client/drawer/LICENSE.shadcn").text();
+    const notices = baseLicense.replace("Permission is hereby", `${shadcnLicense.match(/Copyright[^\r\n]+/)![0]}\n\nPermission is hereby`);
+    const body = `${await output.text()}\n/*\n${notices}\n*/\n`;
     const licensedName = `drawer-${hash(body)}.js`;
     await Bun.write(`dist/assets/${licensedName}`, body);
     assets[key] = `/assets/${licensedName}`;
@@ -114,7 +118,8 @@ await Bun.write("dist/sw.js", await sw.outputs[0].arrayBuffer());
 let jsBytes = 0,
   cssBytes = 0;
 const drawerBytes = gzipSync(await readFile(`dist${assets.drawer}`)).length;
-if (drawerBytes > 16 * 1024)
+// Full shadcn/Base UI nesting styles and state, loaded only on drawer use.
+if (drawerBytes > 17 * 1024)
   throw new Error(`Drawer budget exceeded: ${drawerBytes}`);
 for (const path of Object.values(assets)) {
   if (path === assets.drawer) continue;

@@ -27,9 +27,23 @@ try {
       await expect(page.locator('#outside')).toHaveJSProperty('inert', true);
       await page.locator('#child-trigger').click(); await settled(page, 'child');
       await expect(page.locator('#parent-popup')).toHaveAttribute('data-nested-drawer-open', '');
+      await settled(page, 'parent');
+      const referenceStyle = await page.locator('#parent-popup').evaluate(el => {
+        const style = getComputedStyle(el);
+        return { duration: style.transitionDuration, easing: style.transitionTimingFunction,
+          height: el.getBoundingClientRect().height / new DOMMatrixReadOnly(style.transform).a,
+          filter: style.filter, opacity: getComputedStyle(el.querySelector('[data-slot=drawer-content]')!).opacity };
+      });
+      expect(referenceStyle.duration).toBe('0.45s');
+      expect(referenceStyle.easing).toBe('cubic-bezier(0.22, 1, 0.36, 1)');
+      expect(referenceStyle.height).toBeCloseTo(await page.locator('#child-popup').evaluate(el => (el as HTMLElement).offsetHeight), 1);
+      expect(referenceStyle.filter).toBe('brightness(0.95)');
+      expect(referenceStyle.opacity).toBe('0');
+
       await expect.poll(() => page.locator('#parent-popup').evaluate(el => el.style.getPropertyValue('--nested-drawers'))).toBe('1');
       await page.locator('#grandchild-trigger').click(); await settled(page, 'grandchild');
       await expect.poll(() => page.locator('#parent-popup').evaluate(el => el.style.getPropertyValue('--nested-drawers'))).toBe('2');
+      await expect.poll(() => page.locator('#parent-popup').evaluate(el => el.style.getPropertyValue('--drawer-frontmost-height'))).toBe('480px');
       await page.keyboard.press('Tab');
       expect(await page.locator('#grandchild-popup').evaluate(el => el.contains(document.activeElement))).toBe(true);
       await page.keyboard.press('Escape');
@@ -55,6 +69,32 @@ try {
       await expect(page.locator('#parent-trigger')).toBeFocused();
       await expect(page.locator('#outside')).toHaveJSProperty('inert', false);
       expect(await page.evaluate(() => document.body.style.overflow)).toBe('');
+      // A short nested drag settles back with the reference transform transition.
+      // Progress and the parent's swiping flag must commit together on release.
+      await page.locator('#parent-trigger').click(); await settled(page, 'parent');
+      await page.locator('#child-trigger').click(); await settled(page, 'child'); await settled(page, 'parent');
+      const settlingHandle = (await page.locator('#child-handle').boundingBox())!;
+      await page.mouse.move(settlingHandle.x + 20, settlingHandle.y + 20); await page.mouse.down();
+      for (let i = 1; i <= 8; i++) {
+        await page.mouse.move(settlingHandle.x + 20, settlingHandle.y + 20 + i * 10);
+        await page.waitForTimeout(25);
+      }
+      await page.waitForTimeout(180);
+      const draggedScale = await page.locator('#parent-popup').evaluate(el => new DOMMatrixReadOnly(getComputedStyle(el).transform).a);
+      expect(draggedScale).toBeGreaterThan(.954);
+      await page.mouse.up();
+      const release = await page.locator('#parent-popup').evaluate(el => ({
+        scale: new DOMMatrixReadOnly(getComputedStyle(el).transform).a,
+        transitioning: el.getAnimations().some(animation => (animation as CSSTransition).transitionProperty === 'transform'),
+      }));
+      expect(release.transitioning).toBe(true);
+      expect(release.scale).toBeGreaterThan(.9501);
+      expect(release.scale).toBeLessThanOrEqual(draggedScale + .0001);
+      await settled(page, 'parent');
+      expect(await page.locator('#parent-popup').evaluate(el => new DOMMatrixReadOnly(getComputedStyle(el).transform).a)).toBeCloseTo(.95, 3);
+      await expect(page.locator('#child-popup')).toHaveAttribute('data-open', '');
+      await page.keyboard.press('Escape'); await expect(page.locator('#child-popup')).toBeHidden();
+      await page.keyboard.press('Escape'); await expect(page.locator('#parent-popup')).toBeHidden();
       // Native touch on Chromium, with equivalent synthetic TouchEvents on the
       // Windows WebKit port (which cannot inject native touchscreen drags).
       await page.locator('#parent-trigger').click(); await settled(page, 'parent');
@@ -90,6 +130,38 @@ try {
       await expect(page.locator('#parent-popup')).toHaveAttribute('data-open', '');
       await page.evaluate(() => { window.preventDrawerClose = false; window.drawers.parent.close(); window.drawers.parent.open(); });
       await settled(page, 'parent');
+      await page.keyboard.press('Escape'); await expect(page.locator('#parent-popup')).toBeHidden();
+      // Once a closing child starts restoring its parent, scale must never dip
+      // back toward the nested size while that child waits to unmount.
+      await page.locator('#parent-trigger').click(); await settled(page, 'parent');
+      await page.locator('#child-trigger').click(); await settled(page, 'child'); await settled(page, 'parent');
+      await page.evaluate(() => {
+        const samples = { largest: 0, retreat: 0, done: false };
+        (window as any).parentCloseScales = samples;
+        const popup = document.querySelector('#parent-popup')!;
+        const start = performance.now();
+        function sample() {
+          const transform = getComputedStyle(popup).transform;
+          const scale = transform === 'none' ? 1 : new DOMMatrixReadOnly(transform).a;
+          samples.largest = Math.max(samples.largest, scale);
+          samples.retreat = Math.max(samples.retreat, samples.largest - scale);
+          if (performance.now() - start < 1100) requestAnimationFrame(sample);
+          else samples.done = true;
+        }
+        requestAnimationFrame(sample);
+      });
+      const closingHandle = (await page.locator('#child-handle').boundingBox())!;
+      await page.mouse.move(closingHandle.x + 20, closingHandle.y + 20); await page.mouse.down();
+      for (let i = 1; i <= 12; i++) {
+        await page.mouse.move(closingHandle.x + 20, closingHandle.y + 20 + i * 30);
+        await page.waitForTimeout(16);
+      }
+      await page.mouse.up();
+      await expect(page.locator('#child-popup')).toBeHidden();
+      await expect.poll(() => page.evaluate(() => (window as any).parentCloseScales.done)).toBe(true);
+      const scaleResult = await page.evaluate(() => (window as any).parentCloseScales);
+      expect(scaleResult.largest).toBeCloseTo(1, 3);
+      expect(scaleResult.retreat).toBeLessThan(.002);
       await page.keyboard.press('Escape'); await expect(page.locator('#parent-popup')).toBeHidden();
       // A canceled swipe must also remove its optimistic ending styles.
       await page.locator('#parent-trigger').click(); await settled(page, 'parent');
